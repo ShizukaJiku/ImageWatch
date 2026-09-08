@@ -1,0 +1,122 @@
+name: Release
+
+# Se dispara al empujar una etiqueta de versión (v1.2.3). El job de build
+# depende del de test: si algo falla, no se genera ni se publica ningún
+# instalador. El instalador se sube como asset del Release de GitHub, listo
+# para descargar y ejecutar sin pasar por el código fuente.
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  test:
+    name: Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Descargar el repositorio
+        uses: actions/checkout@v4
+
+      - name: Configurar JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Configurar Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Dar permiso de ejecución a gradlew
+        run: chmod +x gradlew
+
+      - name: Tests
+        run: ./gradlew :shared:jvmTest --no-daemon
+
+  build:
+    name: Generar el instalador
+    needs: test
+    # El empaquetado (jpackage + WiX) produce un MSI, así que el runner tiene
+    # que ser Windows: es el único formato que desktopApp/build.gradle.kts
+    # declara en nativeDistributions.targetFormats.
+    runs-on: windows-latest
+    steps:
+      - name: Descargar el repositorio
+        uses: actions/checkout@v4
+
+      - name: Configurar JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Configurar Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Instalar WiX Toolset
+        run: choco install wixtoolset -y
+
+      - name: Generar el instalador MSI
+        shell: bash
+        run: |
+          chmod +x gradlew
+          ./gradlew :desktopApp:packageMsi --no-daemon
+
+      - name: Ubicar el instalador generado
+        id: msi
+        shell: bash
+        run: |
+          archivo=$(find desktopApp/build/compose/binaries/main/msi -name '*.msi' -print -quit)
+          if [ -z "$archivo" ]; then
+            echo "No se encontró ningún .msi en desktopApp/build/compose/binaries/main/msi" >&2
+            exit 1
+          fi
+          echo "path=$archivo" >> "$GITHUB_OUTPUT"
+
+      - name: Verificar el runtime empaquetado
+        shell: bash
+        # Bloquea el release a propósito, a diferencia de la versión anterior de este paso, que
+        # solo dejaba constancia en el log.
+        #
+        # El runtime que arma jlink es mínimo, y un módulo que falte no lo detecta ni un test ni
+        # `packageMsi`: la aplicación instalada muere en el arranque con «Failed to launch JVM» y
+        # el pipeline termina igual de verde. Ya ocurrió una vez con `java.naming`, que logback
+        # necesita por reflexión y que `suggestRuntimeModules` no sugiere porque jdeps no la ve.
+        #
+        # Esto comprueba la declaración, no el arranque: un smoke test de verdad exigiría ejecutar
+        # la aplicación, y es una aplicación de bandeja que no termina sola. Cubre la regresión
+        # concreta que nos mordió —que alguien quite un módulo de nativeDistributions— y no más.
+        run: |
+          archivo_release=$(find desktopApp/build/compose -type f -name release -path '*runtime*' -print -quit || true)
+          if [ -z "$archivo_release" ]; then
+            echo "No se encontró el archivo 'release' del runtime empaquetado." >&2
+            exit 1
+          fi
+          echo "Runtime empaquetado ($archivo_release):"
+          grep -E '^(JAVA_VERSION|OS_ARCH|MODULES)=' "$archivo_release"
+          modulos=" $(grep -E '^MODULES=' "$archivo_release" | cut -d'"' -f2) "
+          for modulo in java.naming java.management jdk.unsupported java.instrument; do
+            case "$modulos" in
+              *" $modulo "*) ;;
+              *)
+                echo "Falta el módulo $modulo en el runtime empaquetado." >&2
+                echo "Revisa nativeDistributions.modules en desktopApp/build.gradle.kts." >&2
+                exit 1
+                ;;
+            esac
+          done
+
+      - name: Publicar el Release con el instalador
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          gh release create "${{ github.ref_name }}" "${{ steps.msi.outputs.path }}" \
+            --title "ImageWatch ${{ github.ref_name }}" \
+            --generate-notes

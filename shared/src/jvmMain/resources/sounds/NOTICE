@@ -1,0 +1,25 @@
+Sonidos de ImageWatch
+=====================
+
+Los cuatro ficheros WAV de este directorio proceden del pack "Interface Sounds"
+(version 1.0, 2020) creado y distribuido por Kenney — https://kenney.nl/assets/interface-sounds
+
+Licencia: Creative Commons Zero (CC0 1.0 Universal)
+          https://creativecommons.org/publicdomain/zero/1.0/
+
+La CC0 no exige atribucion. Este fichero existe de todos modos para dejar
+registrada la procedencia: saber de donde vino un binario es lo que permite
+reemplazarlo, auditarlo o actualizarlo mas adelante.
+
+Correspondencia con los ficheros originales del pack, y modificaciones:
+
+  update.wav   <- question_001.ogg
+  error.wav    <- error_006.ogg
+  success.wav  <- confirmation_001.ogg
+  toggle.wav   <- switch_002.ogg
+
+Los originales se distribuyen en Ogg Vorbis. Se convirtieron a WAV PCM de 16
+bits, 44,1 kHz y un canal, sin ningun otro tratamiento: javax.sound.sampled
+—que es lo que la aplicacion usa, y viene en el JDK— no reproduce Ogg sin un
+SPI adicional, y anadir esa dependencia por cuatro avisos de medio segundo no
+sale a cuenta. La CC0 permite la conversion.
