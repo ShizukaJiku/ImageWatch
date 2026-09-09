@@ -43,4 +43,16 @@ class ToastNotificationPort(
         }
         toasts.show(relevantes)
     }
+
+    override fun notifyFailures(failures: List<ImageState>) {
+        if (config().mutedAll) {
+            return
+        }
+        if (!config().toastsEnabled) {
+            return
+        }
+        // Sin sonido: el pitido de "todo falla" ya lo emite ImagesViewModel.onSnapshot en la
+        // transicion. Añadir uno aqui duplicaria el aviso sonoro por cada imagen que cae.
+        toasts.showFailures(failures)
+    }
 }
