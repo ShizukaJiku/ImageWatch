@@ -486,6 +486,7 @@ private fun MainScreen(
                     wiring = wiring,
                     config = config,
                     polling = state.polling,
+                    verifying = state.verifying,
                     watchedCount = state.total,
                     onTogglePolling = viewModel::togglePolling,
                     onExit = onExit,
@@ -514,6 +515,7 @@ private fun SettingsPane(
     wiring: Wiring,
     config: AppConfig,
     polling: Boolean,
+    verifying: Boolean,
     watchedCount: Int,
     onTogglePolling: () -> Unit,
     onExit: () -> Unit,
@@ -528,6 +530,7 @@ private fun SettingsPane(
     SettingsScreen(
         state = state,
         polling = polling,
+        verifying = verifying,
         watchedCount = watchedCount,
         onTogglePolling = onTogglePolling,
         onUrlChange = viewModel::onUrlChange,

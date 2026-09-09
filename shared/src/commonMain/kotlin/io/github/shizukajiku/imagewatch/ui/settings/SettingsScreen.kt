@@ -63,6 +63,8 @@ fun SettingsScreen(
     state: SettingsUiState,
     /** Si el sondeo esta corriendo ahora mismo. No es parte del formulario. */
     polling: Boolean,
+    /** Si hay una tanda de comprobación en vuelo ahora mismo. Tampoco es parte del formulario. */
+    verifying: Boolean,
     /** Cuantas imagenes se vigilan; va en el pie. No se edita aqui. */
     watchedCount: Int,
     onTogglePolling: () -> Unit,
@@ -162,7 +164,13 @@ fun SettingsScreen(
                                 onTogglePolling,
                             )
                             Text(
-                                if (polling) "activo" else "detenido",
+                                if (verifying) {
+                                    "comprobando"
+                                } else if (polling) {
+                                    "activo"
+                                } else {
+                                    "detenido"
+                                },
                                 fontSize = TypeScale.caption,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier.height(Layout.settingsHelpLine),

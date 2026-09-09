@@ -674,11 +674,13 @@ private fun EmptyState(pollIntervalSeconds: Long, onAdd: () -> Unit) {
 private fun Footer(state: ImagesUiState, mutedAll: Boolean) {
     val dark = LocalIsDark.current
     val footState = when {
+        state.verifying -> "Comprobando"
         state.allFailing -> "Sin conexión"
         state.polling -> "Activo"
         else -> "Detenido"
     }
     val footColor = when {
+        state.verifying -> MaterialTheme.colorScheme.primary
         state.allFailing -> statusColors(ImageStatus.ERROR, dark).foreground
         state.polling -> MaterialTheme.colorScheme.primary
         else -> MaterialTheme.colorScheme.onSurfaceVariant
