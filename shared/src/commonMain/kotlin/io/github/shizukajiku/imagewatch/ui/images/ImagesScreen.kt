@@ -99,15 +99,13 @@ fun ImagesScreen(
     onSearchChange: (String) -> Unit,
     onAdd: () -> Unit,
     onAcknowledge: (String) -> Unit,
-    onUndoAcknowledge: (String) -> Unit,
     onAcknowledgeAll: () -> Unit,
     onRefresh: (String?) -> Unit,
-    onEdit: (String) -> Unit,
     onDelete: (String) -> Unit,
     onOpenSettings: () -> Unit,
     onToggleMuteAll: () -> Unit,
     onToggleSilence: (String) -> Unit,
-    onPromoteQueued: () -> Unit,
+    onToggleExpand: (String) -> Unit,
 ) {
     Column(Modifier.fillMaxSize()) {
         Header(state, mutedAll, onSearchChange, onAdd, onOpenSettings, onAcknowledgeAll, onRefresh, onToggleMuteAll)
@@ -119,12 +117,6 @@ fun ImagesScreen(
             Box(Modifier.weight(1f)) { EmptyState(state.pollIntervalSeconds, onAdd) }
         } else {
             NoticeBanner(state) { onRefresh(null) }
-
-            AnimatedVisibility(state.queuedCount > 0, enter = expandVertically(), exit = shrinkVertically()) {
-                Box(Modifier.padding(horizontal = Space.xl, vertical = Space.sm)) {
-                    QueuedBanner(state.queuedCount, onPromoteQueued)
-                }
-            }
 
             val pendingRows = state.rows.filter { it.status == ImageStatus.PENDING }
             val errorRows = state.rows.filter { it.status == ImageStatus.ERROR }
@@ -185,19 +177,16 @@ fun ImagesScreen(
                             PendingSectionHeader(pendingRows.size, onAcknowledgeAll)
 
                         is Entry.PendingItem ->
-                            if (entry.row.pendingUndo) {
-                                UndoRow(entry.row.name, { onUndoAcknowledge(entry.row.name) }, itemMotion)
-                            } else {
-                                PendingRow(
-                                    row = entry.row,
-                                    onAcknowledge = { onAcknowledge(entry.row.name) },
-                                    onRefresh = { onRefresh(entry.row.name) },
-                                    onEdit = { onEdit(entry.row.name) },
-                                    onToggleSilence = { onToggleSilence(entry.row.name) },
-                                    onDelete = { onDelete(entry.row.name) },
-                                    modifier = itemMotion,
-                                )
-                            }
+                            PendingRow(
+                                row = entry.row,
+                                expanded = state.expandedRow == entry.row.name,
+                                onToggleExpand = { onToggleExpand(entry.row.name) },
+                                onAcknowledge = { onAcknowledge(entry.row.name) },
+                                onRefresh = { onRefresh(entry.row.name) },
+                                onToggleSilence = { onToggleSilence(entry.row.name) },
+                                onDelete = { onDelete(entry.row.name) },
+                                modifier = itemMotion,
+                            )
 
                         Entry.ErrorHeader ->
                             ErrorSectionHeader(errorRows.size) { onRefresh(null) }
@@ -205,8 +194,9 @@ fun ImagesScreen(
                         is Entry.ErrorItem ->
                             ErrorRow(
                                 row = entry.row,
+                                expanded = state.expandedRow == entry.row.name,
+                                onToggleExpand = { onToggleExpand(entry.row.name) },
                                 onRefresh = { onRefresh(entry.row.name) },
-                                onEdit = { onEdit(entry.row.name) },
                                 onToggleSilence = { onToggleSilence(entry.row.name) },
                                 onDelete = { onDelete(entry.row.name) },
                                 modifier = itemMotion,
@@ -234,9 +224,9 @@ fun ImagesScreen(
                                 pillBackground = palette.background,
                                 pillForeground = palette.foreground,
                                 verifying = state.verifying,
-                                onAcknowledge = null,
+                                expanded = state.expandedRow == entry.row.name,
+                                onToggleExpand = { onToggleExpand(entry.row.name) },
                                 onRefresh = { onRefresh(entry.row.name) },
-                                onEdit = { onEdit(entry.row.name) },
                                 onToggleSilence = { onToggleSilence(entry.row.name) },
                                 onDelete = { onDelete(entry.row.name) },
                                 modifier = itemMotion,
@@ -389,7 +379,7 @@ private fun Header(
 private fun NoticeBanner(state: ImagesUiState, onRetry: () -> Unit) {
     val dark = LocalIsDark.current
     val disconnected = state.allFailing
-    val nadaQueAtender = !disconnected && state.pending == 0 && state.errorCount == 0 && state.queuedCount == 0
+    val nadaQueAtender = !disconnected && state.pending == 0 && state.errorCount == 0
 
     AnimatedVisibility(
         disconnected || nadaQueAtender,
@@ -445,44 +435,6 @@ private fun NoticeBanner(state: ImagesUiState, onRetry: () -> Unit) {
                         }
                     }
                 }
-            }
-        }
-    }
-}
-
-/** «N novedades nuevas — Ponerlas arriba»: lo que llega mientras se mira la lista espera aquí. */
-@Composable
-private fun QueuedBanner(count: Int, onPromote: () -> Unit) {
-    Surface(
-        color = MaterialTheme.colorScheme.primaryContainer,
-        shape = RoundedCornerShape(Radius.pill),
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(Space.sm),
-            modifier = Modifier.padding(start = Space.lg, top = Space.sm, bottom = Space.sm, end = Space.sm),
-        ) {
-            SvgIcon(AppSvg.ARROW_UP, MaterialTheme.colorScheme.onPrimaryContainer, Modifier.size(IconSize.sm))
-            Text(
-                if (count == 1) "1 novedad nueva" else "$count novedades nuevas",
-                color = MaterialTheme.colorScheme.onPrimaryContainer,
-                fontWeight = FontWeight.SemiBold,
-                fontSize = TypeScale.meta,
-            )
-            Spacer(Modifier.weight(1f))
-            Surface(
-                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.5f),
-                shape = RoundedCornerShape(Radius.pill),
-                onClick = onPromote,
-            ) {
-                Text(
-                    "Ponerlas arriba",
-                    color = MaterialTheme.colorScheme.onPrimaryContainer,
-                    fontWeight = FontWeight.SemiBold,
-                    fontSize = TypeScale.meta,
-                    modifier = Modifier.padding(horizontal = Space.md, vertical = Space.xs + 1.dp),
-                )
             }
         }
     }

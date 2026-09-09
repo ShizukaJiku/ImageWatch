@@ -80,9 +80,6 @@ object Dwell {
     const val HIGHLIGHT_MILLIS = 4000L
     const val BUMP_MILLIS = 3000L
 
-    /** Cuanto se enseña la linea de «Deshacer» tras marcar «Visto» antes de reconocer de verdad. */
-    const val UNDO_MILLIS = 4000L
-
     /** Cuanto dura el rastro de «X se ha movido aquí» en la línea plegada de «Al día». */
     const val TRACE_MILLIS = 4000L
 }
