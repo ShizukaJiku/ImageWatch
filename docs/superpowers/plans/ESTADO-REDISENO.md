@@ -5,7 +5,8 @@ Documento de continuidad para retomar en otra sesión. Se lee **antes** que los 
 - **Spec:** `docs/superpowers/specs/2026-09-08-imagewatch-rediseno-design.md` (7 fases, decisiones D-1..D-7).
 - **Plan fases 1–3:** `docs/superpowers/plans/2026-09-08-imagewatch-rediseno-fases-1-3.md` (completado).
 - **Plan fase 4:** `docs/superpowers/plans/2026-09-08-imagewatch-rediseno-fase-4.md` (completado).
-- **Planes fases 5–7:** aún NO escritos. Se escriben al retomar, uno por fase, con el skill `superpowers:writing-plans`.
+- **Plan fase 5:** `docs/superpowers/plans/2026-09-09-imagewatch-rediseno-fase-5.md` (escrito, sin ejecutar).
+- **Planes fases 6–7:** aún NO escritos. Se escriben al retomar, uno por fase, con el skill `superpowers:writing-plans`.
 - **Contrato de comportamiento:** `docs/superpowers/specs/2026-09-05-imagewatch-historias-de-usuario.md`, actualizado hasta H-97.
 
 ## Dónde estamos
