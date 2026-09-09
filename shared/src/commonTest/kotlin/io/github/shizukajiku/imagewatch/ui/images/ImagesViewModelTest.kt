@@ -89,15 +89,6 @@ class ImagesViewModelTest {
     }
 
     @Test
-    fun `renombrar no colisiona con el propio nombre`() {
-        val fixture = fixture(listOf("alpha"))
-
-        val error = fixture.viewModel.renameImage("alpha", "alpha")
-
-        assertNull(error, "Renombrar una imagen a su nombre actual no es un duplicado")
-    }
-
-    @Test
     fun `reconocer una imagen la deja al dia sin esperar al siguiente ciclo`() = runTest {
         val fixture = fixture(listOf("alpha"), localVersion = "1.0.0", remoteVersion = "2.0.0")
         fixture.service.poll()
@@ -525,33 +516,6 @@ class ImagesViewModelTest {
     }
 
     @Test
-    fun `renombrar una imagen reproduce el sonido de exito`() {
-        val reproducidos = mutableListOf<Sound>()
-        val fixture = fixture(listOf("alpha"), sounds = espia(reproducidos))
-
-        fixture.viewModel.renameImage("alpha", "alpha-renombrada")
-
-        assertEquals(listOf(Sound.SUCCESS), reproducidos)
-    }
-
-    @Test
-    fun `renombrar una imagen conserva su version reconocida`() = runTest {
-        // Sin esto, la imagen renombrada nace sin historial: vuelve a avisar de la version que el
-        // usuario ya habia dado por vista, y la entrada vieja se queda huerfana en el fichero.
-        val fixture = fixture(listOf("alpha"), localVersion = "1.0.0", remoteVersion = "1.0.0")
-        fixture.service.poll()
-
-        val error = fixture.viewModel.renameImage("alpha", "alpha-renombrada")
-
-        assertNull(error)
-        assertNull(fixture.state.find("alpha"), "La entrada vieja no puede quedar huerfana")
-        assertEquals(
-            "registry.local/alpha:1.0.0",
-            assertNotNull(fixture.state.find("alpha-renombrada")).reference,
-        )
-    }
-
-    @Test
     fun `silenciar una imagen la marca sin tocar su version ni su estado`() = runTest {
         val fixture = fixture(listOf("alpha"), localVersion = "1.0.0", remoteVersion = "1.0.0")
         fixture.service.poll()
@@ -576,7 +540,7 @@ class ImagesViewModelTest {
     }
 
     @Test
-    fun `pedir Visto no reconoce al momento, la fila queda en espera de deshacer`() = runTest {
+    fun `reconocer una imagen la mueve a «Al dia» y deja un rastro que se apaga solo`() = runTest {
         val fixture = fixture(
             listOf("alpha"),
             localVersion = "1.0.0",
@@ -585,90 +549,18 @@ class ImagesViewModelTest {
         )
         fixture.service.poll()
 
-        fixture.viewModel.requestAcknowledge("alpha")
-
-        val fila = fixture.viewModel.state.value.rows.single()
-        assertEquals(ImageStatus.PENDING, fila.status, "El dato no cambia mientras dura la ventana de deshacer")
-        assertTrue(fila.pendingUndo)
-    }
-
-    @Test
-    fun `pasado el tiempo de deshacer, Visto se confirma solo y deja un rastro`() = runTest {
-        val fixture = fixture(
-            listOf("alpha"),
-            localVersion = "1.0.0",
-            remoteVersion = "2.0.0",
-            scope = backgroundScope,
-        )
-        fixture.service.poll()
-        fixture.viewModel.requestAcknowledge("alpha")
-
-        advanceTimeBy(Dwell.UNDO_MILLIS + 100)
+        fixture.viewModel.acknowledge("alpha")
 
         val fila = fixture.viewModel.state.value.rows.single()
         assertEquals(ImageStatus.OK, fila.status)
-        assertTrue(!fila.pendingUndo)
         assertEquals("alpha", fixture.viewModel.state.value.trace)
 
         advanceTimeBy(Dwell.TRACE_MILLIS + 100)
-        assertEquals(null, fixture.viewModel.state.value.trace, "El rastro se apaga solo")
+        assertNull(fixture.viewModel.state.value.trace, "El rastro se apaga solo")
     }
 
     @Test
-    fun `si llega una version mas nueva durante la ventana de deshacer, no se reconoce sola`() = runTest {
-        // H: sin esto, acknowledge() lee `latestReleases` en el momento en que el temporizador
-        // despierta, no la version que el usuario tenia delante al pulsar "Visto" -una version
-        // que nadie revisó podia darse por vista en silencio.
-        val fixture = fixture(
-            listOf("alpha"),
-            localVersion = "1.0.0",
-            remoteVersion = "2.0.0",
-            scope = backgroundScope,
-        )
-        fixture.service.poll()
-        fixture.viewModel.requestAcknowledge("alpha")
-
-        fixture.source.version = "3.0.0"
-        fixture.service.poll()
-        advanceTimeBy(Dwell.UNDO_MILLIS + 100)
-
-        val fila = fixture.viewModel.state.value.rows.single()
-        assertEquals(ImageStatus.PENDING, fila.status, "La version 3.0.0 nunca se revisó")
-        assertEquals("3.0.0", fila.remote)
-    }
-
-    @Test
-    fun `deshacer dentro de la ventana no reconoce nada`() = runTest {
-        val fixture = fixture(
-            listOf("alpha"),
-            localVersion = "1.0.0",
-            remoteVersion = "2.0.0",
-            scope = backgroundScope,
-        )
-        fixture.service.poll()
-        fixture.viewModel.requestAcknowledge("alpha")
-
-        fixture.viewModel.undoAcknowledge("alpha")
-        advanceTimeBy(Dwell.UNDO_MILLIS + 100)
-
-        val fila = fixture.viewModel.state.value.rows.single()
-        assertEquals(ImageStatus.PENDING, fila.status, "Deshacer cancela el reconocimiento programado")
-        assertTrue(!fila.pendingUndo)
-        assertTrue(fila.canAcknowledge)
-    }
-
-    @Test
-    fun `pedir Visto de una fila que no esta pendiente no hace nada`() = runTest {
-        val fixture = fixture(listOf("alpha"), localVersion = "1.0.0", remoteVersion = "1.0.0")
-        fixture.service.poll()
-
-        fixture.viewModel.requestAcknowledge("alpha")
-
-        assertTrue(!fixture.viewModel.state.value.rows.single().pendingUndo)
-    }
-
-    @Test
-    fun `una imagen que pasa a pendiente en un ciclo posterior espera tras la banda de novedades`() = runTest {
+    fun `una imagen que pasa a pendiente en un ciclo posterior aparece arriba sin esperar`() = runTest {
         val fixture = fixture(listOf("alpha"), localVersion = "1.0.0", remoteVersion = "1.0.0")
         fixture.service.poll()
         assertEquals(ImageStatus.OK, fixture.viewModel.state.value.rows.single().status)
@@ -677,35 +569,17 @@ class ImagesViewModelTest {
         fixture.service.poll()
 
         val state = fixture.viewModel.state.value
-        assertTrue(state.rows.isEmpty(), "La novedad no se ve todavia, solo se cuenta")
-        assertEquals(1, state.pending, "El titular ya cuenta la novedad en espera")
-        assertEquals(1, state.queuedCount)
+        assertEquals(listOf("alpha"), state.rows.map { it.name }, "La novedad se ve ya, no se encola")
+        assertEquals(1, state.pending)
     }
 
     @Test
-    fun `el primer ciclo de la sesion no encola nada`() = runTest {
+    fun `el primer ciclo de la sesion enseña el pendiente que ya habia`() = runTest {
         val fixture = fixture(listOf("alpha"), localVersion = "1.0.0", remoteVersion = "2.0.0")
 
         fixture.service.poll()
 
-        val state = fixture.viewModel.state.value
-        assertEquals(0, state.queuedCount, "Abrir la aplicacion enseña el pendiente que ya habia, sin encolarlo")
-        assertEquals(listOf("alpha"), state.rows.map { it.name })
-    }
-
-    @Test
-    fun `ponerlas arriba muestra las novedades que esperaban`() = runTest {
-        val fixture = fixture(listOf("alpha"), localVersion = "1.0.0", remoteVersion = "1.0.0")
-        fixture.service.poll()
-        fixture.source.version = "2.0.0"
-        fixture.service.poll()
-        assertTrue(fixture.viewModel.state.value.rows.isEmpty())
-
-        fixture.viewModel.promoteQueued()
-
-        val state = fixture.viewModel.state.value
-        assertEquals(listOf("alpha"), state.rows.map { it.name })
-        assertEquals(0, state.queuedCount)
+        assertEquals(listOf("alpha"), fixture.viewModel.state.value.rows.map { it.name })
     }
 
     @Test

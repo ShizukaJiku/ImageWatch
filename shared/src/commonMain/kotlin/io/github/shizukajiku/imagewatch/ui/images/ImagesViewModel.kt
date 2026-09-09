@@ -18,7 +18,6 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.getAndUpdate
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.datetime.TimeZone
@@ -77,12 +76,6 @@ data class ImageRowState(
     val remoteHighlighted: Boolean = status == ImageStatus.PENDING,
     /** Avisos silenciados: la imagen sigue vigilada y al dia, solo no salta el aviso. */
     val muted: Boolean = false,
-    /**
-     * Se acaba de pedir «Visto»: la fila se sustituye por la linea de Deshacer durante
-     * [io.github.shizukajiku.imagewatch.ui.theme.Dwell.UNDO_MILLIS] y solo entonces se reconoce
-     * de verdad. El estado de abajo no cambia mientras tanto: `status` sigue siendo PENDING.
-     */
-    val pendingUndo: Boolean = false,
     /** Se pidio comprobar solo esta fila y la respuesta todavia no ha llegado. */
     val checking: Boolean = false,
     /** Hace cuánto se comprobó esta fila, en texto. Vacío si nunca se ha comprobado. */
@@ -112,12 +105,6 @@ data class ImagesUiState(
      * umbrales es una decisión, y el banner que lo enseña no es sitio para tomarla.
      */
     val lastSuccessLabel: String = "",
-    /**
-     * Novedades que acaban de llegar y esperan tras la banda «Ponerlas arriba»: ya cuentan en
-     * [pending], todavia no se ven en [rows]. Es la mecanica que evita que el orden salte cuando
-     * el operador ya esta mirando la lista.
-     */
-    val queuedCount: Int = 0,
     /**
      * Nombre que se acaba de mover a «Al dia» tras confirmarse un «Visto»: deja un rastro breve
      * en la linea plegada de esa seccion. Nulo cuando no hay rastro que enseñar.
@@ -206,10 +193,6 @@ class ImagesViewModel(
     private data class TimerState(
         val highlighted: String? = null,
         val bumped: Set<String> = emptySet(),
-        /** Nombres que acaban de pasar a pendientes y esperan tras «Ponerlas arriba». */
-        val queued: Set<String> = emptySet(),
-        /** Nombres con la fila sustituida por la linea de Deshacer, camino de reconocerse. */
-        val pendingUndo: Set<String> = emptySet(),
         /** Nombres cuya comprobacion individual esta en vuelo. */
         val checking: Set<String> = emptySet(),
         /** Se acaba de mover a «Al dia» y deja un rastro breve; un solo dueño a la vez. */
@@ -237,13 +220,6 @@ class ImagesViewModel(
      */
     private val bumpJobs = MutableStateFlow<List<Job>>(emptyList())
 
-    /**
-     * Un job de deshacer por imagen: uno nuevo para el mismo nombre cancela al anterior, igual
-     * que [highlightJob]. Con clave, porque a diferencia del resaltado puede haber varias filas
-     * en su ventana de Deshacer a la vez.
-     */
-    private val undoJobs = MutableStateFlow<Map<String, Job>>(emptyMap())
-
     /** El rastro de «se ha movido aqui» tiene un solo dueño a la vez, igual que el resaltado. */
     private var traceJob: Job? = null
 
@@ -263,7 +239,6 @@ class ImagesViewModel(
     override fun onSnapshot(received: PollSnapshot) {
         // Se compara antes de mover `snapshot`: la referencia es la publicacion anterior.
         val nuevas = novedadesSobrePendientes(snapshot, received)
-        val nuevasPendientes = newlyPending(snapshot, received)
         snapshot = received
         // Se acumulan, no se reemplazan: con un intervalo corto, un ciclo sin novedades no puede
         // apagar el latido de una tanda anterior antes de que cumpla sus tres segundos. Solo el
@@ -274,12 +249,8 @@ class ImagesViewModel(
             timers.update { it.copy(bumped = it.bumped + nuevas) }
             scheduleBumpClear(nuevas)
         }
-        // Las que acaban de pasar a pendientes no entran solas en la lista: esperan tras la banda
-        // «Ponerlas arriba» hasta que el usuario las pide (D1, mecanica 2). Solo la promueve
-        // promoteQueued(); aqui no hay temporizador que las retire solas.
-        if (nuevasPendientes.isNotEmpty()) {
-            timers.update { it.copy(queued = it.queued + nuevasPendientes) }
-        }
+        // Las novedades entran arriba directamente, animando su alto (D1: sin cola «Ponerlas
+        // arriba»). No hay nada que encolar aquí.
         // Cualquier snapshot que llega resuelve toda comprobacion individual en vuelo, sea o no
         // la que la origino: si llego un snapshot, el dato de esa fila ya esta fresco.
         timers.update { it.copy(checking = emptySet()) }
@@ -333,64 +304,11 @@ class ImagesViewModel(
         controller.refreshNow(name)
     }
 
-    /**
-     * «Ponerlas arriba»: las novedades que esperaban tras la banda pasan a verse en la lista. No
-     * hace falta nada mas -ya estaban contadas en el titular-, solo dejar de esconderlas.
-     */
-    fun promoteQueued() {
-        if (timers.value.queued.isEmpty()) return
-        timers.update { it.copy(queued = emptySet()) }
-        recompute()
-    }
-
     /** Silencia o des-silencia los avisos de una imagen: sigue vigilada y al dia, solo no salta el aviso. */
     fun toggleSilence(name: String) {
         val actuales = silencedImages.findAll()
         silencedImages.save(if (name in actuales) actuales - name else actuales + name)
         sounds.play(Sound.TOGGLE)
-        recompute()
-    }
-
-    /**
-     * Pide dar una pendiente por vista: la fila se sustituye por la linea de Deshacer durante
-     * [Dwell.UNDO_MILLIS] y solo entonces se reconoce de verdad (D1, mecanica 1). No-op si la
-     * imagen no esta pendiente -no hay nada que deshacer de una accion que no debia ofrecerse-.
-     */
-    fun requestAcknowledge(name: String) {
-        val fila = snapshot.find(name)
-        if (fila == null || fila.status != ImageStatus.PENDING) {
-            return
-        }
-        // Se captura la version que el usuario vio al pulsar «Visto», no la que haya en
-        // `latestReleases` cuando el temporizador despierte: si llega una version mas nueva
-        // durante la ventana de deshacer, acknowledge() leeria esa version sin que nadie la
-        // hubiera revisado y la daria por vista en silencio.
-        val vista = fila.remote?.value
-        undoJobs.value[name]?.cancel()
-        timers.update { it.copy(pendingUndo = it.pendingUndo + name) }
-        recompute()
-        val job = scope.launch {
-            delay(Dwell.UNDO_MILLIS)
-            timers.update { it.copy(pendingUndo = it.pendingUndo - name) }
-            val actual = snapshot.find(name)?.remote?.value
-            if (actual == vista) {
-                acknowledge(name)
-                leaveTrace(name)
-            } else {
-                // La version cambio mientras se esperaba: lo que se iba a reconocer ya no es lo
-                // ultimo. No se reconoce nada solo -la fila vuelve a pendiente con la version
-                // nueva, y el usuario decide otra vez-.
-                recompute()
-            }
-        }
-        undoJobs.update { it + (name to job) }
-        job.invokeOnCompletion { undoJobs.update { actual -> if (actual[name] === job) actual - name else actual } }
-    }
-
-    /** Deshace un «Visto» pedido hace menos de [Dwell.UNDO_MILLIS]: la fila vuelve a como estaba. */
-    fun undoAcknowledge(name: String) {
-        undoJobs.getAndUpdate { it - name }[name]?.cancel()
-        timers.update { it.copy(pendingUndo = it.pendingUndo - name) }
         recompute()
     }
 
@@ -428,9 +346,11 @@ class ImagesViewModel(
         service.acknowledge(name)
         snapshot = service.lastSnapshot()
         dismissToastsFor(name)
-        // Marcar como vista persiste una decision del usuario, igual que eliminar o renombrar:
-        // se confirma igual.
+        // Marcar como vista persiste una decision del usuario, igual que eliminar: se confirma
+        // con sonido. La fila sale de «Versión nueva» al momento (D1: sin ventana de deshacer) y
+        // deja un rastro breve en la cabecera de «Al día» para que el operador vea a dónde fue.
         sounds.play(Sound.SUCCESS)
+        leaveTrace(name)
         recompute()
     }
 
@@ -444,9 +364,24 @@ class ImagesViewModel(
         recompute()
     }
 
-    fun addImage(name: String): String? = saveName(editing = null, candidate = name)
-
-    fun renameImage(previous: String, candidate: String): String? = saveName(editing = previous, candidate = candidate)
+    /**
+     * Da de alta una imagen nueva. Devuelve `null` si todo fue bien, o el mensaje a mostrar. El
+     * rediseño retira el renombrado: el origen de una imagen es su identidad, y para cambiarla se
+     * quita y se vuelve a agregar.
+     */
+    fun addImage(candidate: String): String? {
+        val value = candidate.trim()
+        if (value.isEmpty() || !VALID_NAME.matches(value)) {
+            return "Usa solo letras, números, '.', '_' o '-'"
+        }
+        if (trackedImages.findAll().any { it == value }) {
+            return "Ya existe una imagen con ese nombre"
+        }
+        trackedImages.save(trackedImages.findAll() + value)
+        sounds.play(Sound.SUCCESS)
+        recompute()
+        return null
+    }
 
     fun removeImage(name: String) {
         trackedImages.save(trackedImages.findAll() - name)
@@ -463,7 +398,6 @@ class ImagesViewModel(
         service.removeListener(this)
         highlightJob?.cancel()
         bumpJobs.value.forEach { it.cancel() }
-        undoJobs.value.values.forEach { it.cancel() }
         traceJob?.cancel()
     }
 
@@ -531,31 +465,6 @@ class ImagesViewModel(
             .map { it.name }
             .toSet()
 
-    private fun saveName(editing: String?, candidate: String): String? {
-        val value = candidate.trim()
-        if (value.isEmpty() || !VALID_NAME.matches(value)) {
-            return "Usa solo letras, números, '.', '_' o '-'"
-        }
-        val current = trackedImages.findAll()
-        if (current.any { it == value && it != editing }) {
-            return "Ya existe una imagen con ese nombre"
-        }
-        val updated = when (editing) {
-            null -> current + value
-            else -> current.map { if (it == editing) value else it }
-        }
-        trackedImages.save(updated)
-        // Renombrar no puede costarle al usuario su historial: sin esto, la imagen renombrada
-        // nace sin version reconocida y vuelve a avisar de lo que ya habia dado por visto.
-        if (editing != null && editing != value) {
-            service.renameImage(editing, value)
-            snapshot = service.lastSnapshot()
-        }
-        sounds.play(Sound.SUCCESS)
-        recompute()
-        return null
-    }
-
     private fun recompute(change: (ImagesUiState) -> ImagesUiState = { it }) {
         mutableState.update { current -> derive(change(current)) }
     }
@@ -585,13 +494,8 @@ class ImagesViewModel(
         val consultadas = nombres.mapNotNull { byName[it] }
         val pending = all.count { it.status == ImageStatus.PENDING }
         val errorCount = all.count { it.status == ImageStatus.ERROR }
-        // Se filtra aqui y no al guardar en `timers`: una imagen encolada que se elimina, falla o
-        // se reconoce por otra via deja de contar sola, sin que nada tenga que ir a limpiar el
-        // conjunto. Solo cuentan las que siguen pendientes de verdad.
-        val encoladas = timerState.queued.filter { byName[it]?.status == ImageStatus.PENDING }.toSet()
-        val visibles = all.filterNot { it.name in encoladas }
         return current.copy(
-            rows = if (term.isEmpty()) visibles else visibles.filter { it.name.lowercase().contains(term) },
+            rows = if (term.isEmpty()) all else all.filter { it.name.lowercase().contains(term) },
             total = all.size,
             pending = pending,
             errorCount = errorCount,
@@ -600,7 +504,6 @@ class ImagesViewModel(
             pollIntervalSeconds = controller.interval().inWholeSeconds,
             allFailing = consultadas.isNotEmpty() && consultadas.all { it.status == ImageStatus.ERROR },
             lastSuccessLabel = lastSuccessLabel(current.lastSuccessAt, Clock.System.now()),
-            queuedCount = encoladas.size,
             trace = timerState.trace,
         )
     }
@@ -623,7 +526,6 @@ class ImagesViewModel(
         silenciadas: Set<String>,
     ): ImageRowState {
         val muted = name in silenciadas
-        val pendingUndo = name in timerState.pendingUndo
         val checking = name in timerState.checking
         if (image == null) {
             return ImageRowState(
@@ -635,7 +537,6 @@ class ImagesViewModel(
                 emphasis = emphasisFor(name, timerState),
                 detail = "Sin verificar todavía",
                 muted = muted,
-                pendingUndo = pendingUndo,
                 checking = checking,
             )
         }
@@ -650,28 +551,8 @@ class ImagesViewModel(
             detail = detail,
             error = image.error,
             muted = muted,
-            pendingUndo = pendingUndo,
             checking = checking,
             age = relativeAge(image.lastCheckedAt, Clock.System.now()),
         )
-    }
-
-    /**
-     * Imágenes que acaban de pasar a pendientes: no lo estaban en el ciclo anterior, o no
-     * existían. El primer ciclo de la sesión no encola nada -mismo criterio que
-     * `VersionPollingService.notifyTransitions`-: abrir la aplicación debe enseñar el estado
-     * pendiente que ya había, no encolarlo detrás de una banda que nadie pidió.
-     */
-    private fun newlyPending(previous: PollSnapshot, current: PollSnapshot): Set<String> {
-        if (previous === PollSnapshot.EMPTY) {
-            return emptySet()
-        }
-        return current.images
-            .filter { it.status == ImageStatus.PENDING }
-            .filter { image ->
-                previous.find(image.name)?.status != ImageStatus.PENDING
-            }
-            .map { it.name }
-            .toSet()
     }
 }
