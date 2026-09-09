@@ -48,6 +48,7 @@ import io.github.shizukajiku.imagewatch.ui.settings.SettingsViewModel
 import io.github.shizukajiku.imagewatch.ui.sound.Sound
 import io.github.shizukajiku.imagewatch.ui.sound.Sounds
 import io.github.shizukajiku.imagewatch.ui.theme.ImageWatchTheme
+import io.github.shizukajiku.imagewatch.ui.toast.ToastKind
 import io.github.shizukajiku.imagewatch.ui.toast.ToastLayer
 import io.github.shizukajiku.imagewatch.ui.toast.ToastNotificationPort
 import io.github.shizukajiku.imagewatch.ui.toast.ToastState
@@ -365,9 +366,20 @@ fun main() {
                 onPause = wiring.toasts::pause,
                 onResume = wiring.toasts::resume,
                 onExitFinished = wiring.toasts::exitFinished,
-                onView = { name ->
-                    windowVisible = true
-                    name?.let(viewModel::highlight)
+                onAction = { name, kind ->
+                    when (kind) {
+                        ToastKind.NUEVA, ToastKind.SALTADAS -> {
+                            windowVisible = true
+                            name?.let(viewModel::highlight)
+                        }
+
+                        ToastKind.ERROR -> name?.let(viewModel::refreshNow)
+
+                        ToastKind.RESUMEN -> {
+                            windowVisible = true
+                            traerAlFrente++
+                        }
+                    }
                 },
             )
         }
