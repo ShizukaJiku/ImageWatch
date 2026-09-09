@@ -14,8 +14,11 @@ import kotlinx.coroutines.launch
 import kotlin.time.Duration
 import kotlin.time.TimeSource
 
+enum class ToastKind { NUEVA, SALTADAS, ERROR, RESUMEN }
+
 /**
- * Un aviso en pantalla. Uno por imagen: los avisos no se agrupan.
+ * Un aviso en pantalla. Uno por imagen: los avisos no se agrupan (salvo el `RESUMEN`, que es una
+ * derivación de la capa de UI y no un aviso real — ver [ToastState.toasts]).
  *
  * `leaving` es la señal de `ToastState` de que toca irse: la tarjeta la usa para arrancar su
  * animación de salida, y no para borrarse sola.
@@ -29,8 +32,11 @@ import kotlin.time.TimeSource
  */
 data class Toast(
     val id: Long,
+    val kind: ToastKind,
     val title: String,
-    val body: String,
+    val sub: String,
+    val meta: String,
+    val action: String,
     val imageName: String?,
     val leaving: Boolean = false,
     val progress: Float = 1f,
@@ -38,6 +44,7 @@ data class Toast(
 )
 
 private const val ABSENT = "—"
+private const val SIN_DETALLE = "sin detalle"
 
 /**
  * Suelo de la duración de un aviso. `AppConfig.fromEnvironment()` no valida la duración
@@ -68,7 +75,7 @@ private const val MIN_VISIBLE_MILLIS = 1000L
  * visibles; en cuanto uno se va, entra el siguiente de la cola. Ningún aviso se pierde por llegar
  * en mal momento.
  */
-const val TOASTS_VISIBLES = 4
+const val TOASTS_VISIBLES = 3
 
 /**
  * Origen del reloj monótono por defecto. `System.nanoTime()` es del JDK; `TimeSource.Monotonic`
@@ -127,13 +134,48 @@ class ToastState(
 
     private val sequence = MutableStateFlow(0L)
     private val relojes = MutableStateFlow(Relojes())
+
+    /** La cola completa, en orden de llegada. [toasts] es su recorte visible — ver [publicar]. */
     private val mutableToasts = MutableStateFlow<List<Toast>>(emptyList())
+    private val visibleToasts = MutableStateFlow<List<Toast>>(emptyList())
 
     /**
-     * La cola completa, en orden de llegada. Quien la pinta muestra solo los primeros
-     * [TOASTS_VISIBLES]; los demás esperan a que se libere hueco.
+     * La cola visible, en orden de llegada: los dos primeros reales más, si hay más de tres en
+     * la cola completa, una tarjeta sintética `RESUMEN` en el tercer hueco.
+     *
+     * Se recalcula de forma síncrona en [publicar] justo después de cada escritura en
+     * `mutableToasts` -no con un `.map().stateIn()` reactivo-, porque `show()`/`dismiss()` llegan
+     * de hilos reales que leen `toasts.value` inmediatamente después de escribir, sin ceder el
+     * hilo: una tubería reactiva publicaría el recorte en una corrutina aparte, y esa lectura
+     * síncrona podría llegar antes de que corriera.
+     *
+     * El `RESUMEN` **no vive en `mutableToasts`**: `id = -1L` para que ningún `dismiss` real lo
+     * alcance nunca (`sequence` arranca en 0 y solo sube), y para que `sincronizarRelojes` -que
+     * itera sobre `mutableToasts`, no sobre este `StateFlow`- lo ignore por completo. Su reloj no
+     * corre: cuando uno de los dos reales visibles se va, entra el siguiente real y el contador
+     * del resumen baja solo, sin que nadie lo reprograme.
      */
-    val toasts: StateFlow<List<Toast>> = mutableToasts.asStateFlow()
+    val toasts: StateFlow<List<Toast>> = visibleToasts.asStateFlow()
+
+    private fun publicar() {
+        val full = mutableToasts.value
+        visibleToasts.value = if (full.size <= TOASTS_VISIBLES) {
+            full
+        } else {
+            val visibles = TOASTS_VISIBLES - 1
+            full.take(visibles) + resumenDe(full.drop(visibles))
+        }
+    }
+
+    private fun resumenDe(ocultos: List<Toast>) = Toast(
+        id = -1L,
+        kind = ToastKind.RESUMEN,
+        title = "y ${ocultos.size} novedades más",
+        sub = "",
+        meta = ocultos.mapNotNull { it.imageName }.joinToString(", "),
+        action = "Ver todas",
+        imageName = null,
+    )
 
     fun show(updates: List<ImageState>) {
         if (updates.isEmpty()) {
@@ -143,12 +185,31 @@ class ToastState(
         val nuevos = updates.map { toastOf(it, millis) }
         relojes.update { s -> s.copy(remaining = s.remaining + nuevos.associate { it.id to millis }) }
         mutableToasts.update { it + nuevos }
+        publicar()
+        sincronizarRelojes()
+    }
+
+    /**
+     * Aviso de imágenes que acaban de fallar la verificación. Mismo patrón que [show]: entra en
+     * la misma cola, cuenta para el mismo `TOASTS_VISIBLES`, y su reloj lo lleva igual
+     * [sincronizarRelojes]. La única diferencia es el contenido de la tarjeta ([failureOf]).
+     */
+    fun showFailures(failures: List<ImageState>) {
+        if (failures.isEmpty()) {
+            return
+        }
+        val millis = duration().inWholeMilliseconds.coerceAtLeast(MIN_VISIBLE_MILLIS)
+        val nuevos = failures.map { failureOf(it, millis) }
+        relojes.update { s -> s.copy(remaining = s.remaining + nuevos.associate { it.id to millis }) }
+        mutableToasts.update { it + nuevos }
+        publicar()
         sincronizarRelojes()
     }
 
     fun dismiss(id: Long) {
         olvidar(id)
         mutableToasts.update { current -> current.filterNot { it.id == id } }
+        publicar()
         sincronizarRelojes()
     }
 
@@ -160,6 +221,7 @@ class ToastState(
     fun dismissFor(imageName: String) {
         mutableToasts.value.filter { it.imageName == imageName }.forEach { olvidar(it.id) }
         mutableToasts.update { current -> current.filterNot { it.imageName == imageName } }
+        publicar()
         sincronizarRelojes()
     }
 
@@ -245,6 +307,7 @@ class ToastState(
                 }
             }
         }
+        publicar()
     }
 
     private fun marcarSaliente(id: Long) {
@@ -258,6 +321,7 @@ class ToastState(
         mutableToasts.update { lista ->
             lista.map { if (it.id == id) it.copy(leaving = true, progress = 0f) else it }
         }
+        publicar()
     }
 
     /**
@@ -316,8 +380,22 @@ class ToastState(
 
     private fun toastOf(image: ImageState, millis: Long) = Toast(
         id = sequence.updateAndGet { it + 1 },
-        title = "Nueva versión de ${image.name}",
-        body = "${image.local?.value ?: ABSENT} → ${image.remote?.value ?: ABSENT}",
+        kind = ToastKind.NUEVA,
+        title = "${image.name} · versión nueva",
+        sub = "versión ${image.remote?.value ?: ABSENT}",
+        meta = image.registry,
+        action = "Visto",
+        imageName = image.name,
+        durationMillis = millis,
+    )
+
+    private fun failureOf(image: ImageState, millis: Long) = Toast(
+        id = sequence.updateAndGet { it + 1 },
+        kind = ToastKind.ERROR,
+        title = "${image.name} · no se pudo verificar",
+        sub = image.error ?: SIN_DETALLE,
+        meta = image.registry,
+        action = "Reintentar",
         imageName = image.name,
         durationMillis = millis,
     )
