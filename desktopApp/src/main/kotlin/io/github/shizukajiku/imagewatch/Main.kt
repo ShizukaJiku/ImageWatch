@@ -18,6 +18,7 @@ import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberTrayState
 import androidx.compose.ui.window.rememberWindowState
+import io.github.shizukajiku.imagewatch.application.AutostartPort
 import io.github.shizukajiku.imagewatch.application.ConfigStore
 import io.github.shizukajiku.imagewatch.application.ImageSource
 import io.github.shizukajiku.imagewatch.application.PollingController
@@ -26,6 +27,7 @@ import io.github.shizukajiku.imagewatch.application.TrackedImageStore
 import io.github.shizukajiku.imagewatch.application.VersionPollingService
 import io.github.shizukajiku.imagewatch.config.AppConfig
 import io.github.shizukajiku.imagewatch.config.ThemePreference
+import io.github.shizukajiku.imagewatch.infrastructure.os.WindowsAutostart
 import io.github.shizukajiku.imagewatch.infrastructure.persistence.JsonConfigStore
 import io.github.shizukajiku.imagewatch.infrastructure.persistence.JsonImageStateStore
 import io.github.shizukajiku.imagewatch.infrastructure.persistence.JsonSilencedImageStore
@@ -37,7 +39,7 @@ import io.github.shizukajiku.imagewatch.infrastructure.remote.SimulatedImageSour
 import io.github.shizukajiku.imagewatch.ui.AlertIconPainter
 import io.github.shizukajiku.imagewatch.ui.AppIconPainter
 import io.github.shizukajiku.imagewatch.ui.components.TitleBar
-import io.github.shizukajiku.imagewatch.ui.dialogs.DeleteDialog
+import io.github.shizukajiku.imagewatch.ui.dialogs.ConfirmDialog
 import io.github.shizukajiku.imagewatch.ui.dialogs.NameDialog
 import io.github.shizukajiku.imagewatch.ui.images.ImagesScreen
 import io.github.shizukajiku.imagewatch.ui.images.ImagesViewModel
@@ -54,6 +56,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
+import okio.FileSystem
 import okio.Path
 import okio.Path.Companion.toPath
 import org.slf4j.LoggerFactory
@@ -135,6 +138,16 @@ private class Wiring {
 
     /** Cierto mientras la ventana principal tiene el foco. Lo actualiza la propia ventana. */
     val windowFocused = MutableStateFlow(false)
+
+    /**
+     * Arranque al iniciar sesión. El comando es el ejecutable actual: en la instalación es el
+     * lanzador de la app; con `gradle run` es la JVM -donde el autostart no tiene sentido, pero
+     * tampoco molesta-.
+     */
+    val autostart: AutostartPort = WindowsAutostart(
+        label = "ImageWatch",
+        command = listOf(ProcessHandle.current().info().command().orElse("imagewatch"), "--minimized"),
+    )
 
     val sounds = Sounds(
         enabled = { config.value.soundsEnabled },
@@ -228,6 +241,45 @@ private class Wiring {
         )
     }
 
+    /**
+     * Ajustes a valores de fábrica. Las imágenes vigiladas y su versión vista no se tocan: solo
+     * los campos de configuración. Seguro en caliente -`applyConfig` está pensado para eso-.
+     */
+    fun resetSettings(): String? {
+        val factory = configFromEnvironment()
+        return applyConfig(
+            config.value.copy(
+                remoteUrl = factory.remoteUrl,
+                pollInterval = factory.pollInterval,
+                ignoreSslErrors = factory.ignoreSslErrors,
+                theme = factory.theme,
+                toastsEnabled = factory.toastsEnabled,
+                toastDuration = factory.toastDuration,
+                soundsEnabled = factory.soundsEnabled,
+                soundVolume = factory.soundVolume,
+                mutedAll = factory.mutedAll,
+            ),
+        )
+    }
+
+    /**
+     * Borra los cuatro ficheros JSON que la app guarda en este equipo y para el sondeo. No se
+     * recablea `Wiring` en caliente -`service` tiene oyentes y el view model lo referencia-: el
+     * llamador cierra la app, y volver a abrirla la siembra de cero desde el entorno, que es el
+     * mismo camino que el primer arranque.
+     */
+    fun wipeLocalData(onDone: () -> Unit) {
+        controller.stop()
+        val base = configFromEnvironment().stateFile.toPath()
+        listOf(
+            base,
+            base.sibling("config.json"),
+            base.sibling("tracked-images.json"),
+            base.sibling("silenced-images.json"),
+        ).forEach { runCatching { FileSystem.SYSTEM.delete(it, mustExist = false) } }
+        onDone()
+    }
+
     private fun sourceFor(config: AppConfig): ImageSource = if (config.simulationMode) {
         SimulatedImageSource(Clock.System, SIMULATED_BUMP_EVERY)
     } else {
@@ -269,6 +321,17 @@ fun main() {
         }
         val state by viewModel.state.collectAsState()
 
+        // Secuencia de cierre limpio: la usan «Salir» de la bandeja y «Borrar datos locales» de
+        // Ajustes -tras borrar los ficheros, la app se cierra y se vuelve a abrir de cero-.
+        val cerrarApp: () -> Unit = {
+            viewModel.close()
+            wiring.controller.close()
+            wiring.sounds.close()
+            wiring.toastScope.cancel()
+            wiring.imagesScope.cancel()
+            exitApplication()
+        }
+
         // El Tray vive sin Window: es lo que permite que la aplicación resida en la bandeja y
         // que cerrar la ventana no mate el proceso.
         Tray(
@@ -287,17 +350,7 @@ fun main() {
                         traerAlFrente++
                     },
                 )
-                Item(
-                    "Salir",
-                    onClick = {
-                        viewModel.close()
-                        wiring.controller.close()
-                        wiring.sounds.close()
-                        wiring.toastScope.cancel()
-                        wiring.imagesScope.cancel()
-                        exitApplication()
-                    },
-                )
+                Item("Salir", onClick = cerrarApp)
             },
         )
 
@@ -367,7 +420,7 @@ fun main() {
                                 viewModel.clearHighlight()
                                 wiring.windowFocused.value = false
                             }
-                            MainScreen(wiring, viewModel)
+                            MainScreen(wiring, viewModel, cerrarApp)
                         }
                     }
                 }
@@ -379,7 +432,7 @@ fun main() {
 private enum class Screen { IMAGES, SETTINGS }
 
 @Composable
-private fun MainScreen(wiring: Wiring, viewModel: ImagesViewModel) {
+private fun MainScreen(wiring: Wiring, viewModel: ImagesViewModel, onExit: () -> Unit) {
     val state by viewModel.state.collectAsState()
     val config by wiring.config.collectAsState()
     var screen by remember { mutableStateOf(Screen.IMAGES) }
@@ -409,7 +462,9 @@ private fun MainScreen(wiring: Wiring, viewModel: ImagesViewModel) {
                     wiring = wiring,
                     config = config,
                     polling = state.polling,
+                    watchedCount = state.total,
                     onTogglePolling = viewModel::togglePolling,
+                    onExit = onExit,
                     onBack = { screen = Screen.IMAGES },
                 )
         }
@@ -419,7 +474,14 @@ private fun MainScreen(wiring: Wiring, viewModel: ImagesViewModel) {
         NameDialog("Agregar imagen", "", { adding = false }) { viewModel.addImage(it) }
     }
     deleting?.let { name ->
-        DeleteDialog(name, { deleting = null }) { viewModel.removeImage(name) }
+        ConfirmDialog(
+            title = "Quitar $name de la lista",
+            body = "Deja de vigilarse y desaparece. La imagen seguirá en el registry.",
+            lost = listOf("El seguimiento de $name", "La versión vista de $name"),
+            confirmLabel = "Quitar de la lista",
+            onDismiss = { deleting = null },
+            onConfirm = { viewModel.removeImage(name) },
+        )
     }
 }
 
@@ -428,32 +490,37 @@ private fun SettingsPane(
     wiring: Wiring,
     config: AppConfig,
     polling: Boolean,
+    watchedCount: Int,
     onTogglePolling: () -> Unit,
+    onExit: () -> Unit,
     onBack: () -> Unit,
 ) {
-    // Sin clave: el unico que cambia la configuracion vigente es este mismo formulario, y
-    // guardar reconstruiria el view model en el instante en que produce la confirmacion,
-    // borrandola antes de que llegue a verse. SettingsPane ya se desmonta y se vuelve a
-    // montar al cambiar de pantalla con el Crossfade, asi que al reabrir Ajustes el
-    // formulario nace igualmente con la configuracion vigente.
-    val viewModel = remember { SettingsViewModel(config, wiring::applyConfig) }
+    // Sin clave: el unico que cambia la configuracion vigente es este mismo formulario -aplica al
+    // momento-. SettingsPane ya se desmonta y se vuelve a montar al cambiar de pantalla con el
+    // Crossfade, asi que al reabrir Ajustes el formulario nace con la configuracion vigente.
+    val viewModel = remember { SettingsViewModel(config, wiring::applyConfig, wiring.autostart) }
     val state by viewModel.state.collectAsState()
 
     SettingsScreen(
         state = state,
         polling = polling,
+        watchedCount = watchedCount,
         onTogglePolling = onTogglePolling,
         onUrlChange = viewModel::onUrlChange,
+        onUrlCommit = viewModel::onUrlCommit,
         onIntervalChange = viewModel::onIntervalChange,
-        onSimulationChange = viewModel::onSimulationChange,
+        onIntervalCommit = viewModel::onIntervalCommit,
         onIgnoreSslChange = viewModel::onIgnoreSslChange,
         onThemeChange = viewModel::onThemeChange,
         onToastsChange = viewModel::onToastsChange,
         onToastSecondsChange = viewModel::onToastSecondsChange,
+        onToastSecondsCommit = viewModel::onToastSecondsCommit,
         onSoundsChange = viewModel::onSoundsChange,
         onVolumeChange = viewModel::onVolumeChange,
         onMutedAllChange = viewModel::onMutedAllChange,
-        onSave = viewModel::save,
+        onAutostartChange = viewModel::onAutostartChange,
+        onResetSettings = { wiring.resetSettings() },
+        onWipeLocalData = { wiring.wipeLocalData(onExit) },
         onBack = onBack,
     )
 }
