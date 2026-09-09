@@ -1,6 +1,7 @@
 package io.github.shizukajiku.imagewatch.ui.images
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
@@ -31,11 +32,15 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -245,6 +250,16 @@ private fun Header(
     onRefresh: (String?) -> Unit,
     onToggleMuteAll: () -> Unit,
 ) {
+    val searchFocus = remember { FocusRequester() }
+    var searchExpanded by rememberSaveable { mutableStateOf(state.search.isNotEmpty()) }
+    var searchFocused by remember { mutableStateOf(false) }
+    // Si el filtro se limpia desde fuera -«Ver» en un aviso llama a highlight()-, el buscador
+    // vuelve a su icono. Guardado con el foco: borrar a mano el último carácter mientras se
+    // escribe no debe replegar el campo bajo el cursor.
+    LaunchedEffect(state.search, searchFocused) {
+        if (state.search.isEmpty() && !searchFocused) searchExpanded = false
+    }
+
     Column(Modifier.padding(start = Space.xl, top = Space.lg, end = Space.xl, bottom = Space.md)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
@@ -275,6 +290,34 @@ private fun Header(
                     SvgIcon(AppSvg.CHECK_ALL, MaterialTheme.colorScheme.primary, Modifier.size(IconSize.lg))
                 }
             }
+            // Buscador replegado a icono (Blueprint «Cabecera de la bandeja»): se expande a
+            // píldora en su sitio, sin empujar el titular hacia un lado. Se repliega al perder el
+            // foco vacío.
+            if (searchExpanded) {
+                OutlinedTextField(
+                    value = state.search,
+                    onValueChange = onSearchChange,
+                    placeholder = { Text("Buscar imagen…") },
+                    leadingIcon = {
+                        SvgIcon(AppSvg.SEARCH, MaterialTheme.colorScheme.onSurfaceVariant, Modifier.size(IconSize.sm))
+                    },
+                    singleLine = true,
+                    shape = RoundedCornerShape(Radius.pill),
+                    modifier = Modifier
+                        .width(Layout.searchPill)
+                        .focusRequester(searchFocus)
+                        .onFocusChanged {
+                            searchFocused = it.isFocused
+                            if (!it.isFocused && state.search.isEmpty()) searchExpanded = false
+                        }
+                        .animateContentSize(),
+                )
+                LaunchedEffect(Unit) { searchFocus.requestFocus() }
+            } else {
+                IconButton({ searchExpanded = true }) {
+                    SvgIcon(AppSvg.SEARCH, MaterialTheme.colorScheme.onSurfaceVariant, Modifier.size(IconSize.md))
+                }
+            }
             // Atajo de «silenciar todos los avisos»: la campana se tacha y se apaga sobre fondo
             // marcado, el mismo interruptor que vive en Ajustes → Avisos.
             Surface(
@@ -298,18 +341,6 @@ private fun Header(
                 Text("  Agregar imagen")
             }
         }
-
-        OutlinedTextField(
-            value = state.search,
-            onValueChange = onSearchChange,
-            placeholder = { Text("Buscar imagen…") },
-            leadingIcon = {
-                SvgIcon(AppSvg.SEARCH, MaterialTheme.colorScheme.onSurfaceVariant, Modifier.size(IconSize.sm))
-            },
-            singleLine = true,
-            shape = RoundedCornerShape(Radius.pill),
-            modifier = Modifier.padding(top = Space.md).width(Layout.searchPill),
-        )
     }
 }
 
