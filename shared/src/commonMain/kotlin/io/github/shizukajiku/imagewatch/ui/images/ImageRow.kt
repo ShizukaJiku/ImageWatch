@@ -59,6 +59,7 @@ import io.github.shizukajiku.imagewatch.ui.theme.LocalIsDark
 import io.github.shizukajiku.imagewatch.ui.theme.Motion
 import io.github.shizukajiku.imagewatch.ui.theme.Radius
 import io.github.shizukajiku.imagewatch.ui.theme.Space
+import io.github.shizukajiku.imagewatch.ui.theme.TabularNums
 import io.github.shizukajiku.imagewatch.ui.theme.TypeScale
 import io.github.shizukajiku.imagewatch.ui.theme.ghostBackground
 import io.github.shizukajiku.imagewatch.ui.theme.mutedText
@@ -127,6 +128,7 @@ private fun RowScope.AgeCell(age: String, caption: String, color: Color) {
             color = color,
             textAlign = TextAlign.End,
             maxLines = 1,
+            style = TabularNums,
         )
         Text(
             caption,
@@ -146,6 +148,7 @@ private fun RowScope.SkipAndPillCell(skip: String, pillText: String, pillBackgro
             fontSize = TypeScale.caption,
             color = mutedText(LocalIsDark.current),
             textAlign = TextAlign.End,
+            style = TabularNums,
             modifier = Modifier.width(Layout.rowSkip).padding(end = Space.sm),
         )
         Surface(
@@ -162,6 +165,7 @@ private fun RowScope.SkipAndPillCell(skip: String, pillText: String, pillBackgro
                 textAlign = TextAlign.Center,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
+                style = TabularNums,
                 modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
             )
         }
