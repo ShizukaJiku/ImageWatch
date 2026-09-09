@@ -40,6 +40,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
@@ -59,6 +60,7 @@ import io.github.shizukajiku.imagewatch.ui.theme.Radius
 import io.github.shizukajiku.imagewatch.ui.theme.Space
 import io.github.shizukajiku.imagewatch.ui.theme.TabularNums
 import io.github.shizukajiku.imagewatch.ui.theme.TypeScale
+import io.github.shizukajiku.imagewatch.ui.theme.focusRing
 import io.github.shizukajiku.imagewatch.ui.theme.mutedText
 import io.github.shizukajiku.imagewatch.ui.theme.statusColors
 import kotlinx.coroutines.delay
@@ -88,6 +90,7 @@ private fun RowCard(
     modifier: Modifier = Modifier,
     expanded: Boolean = false,
     onToggleExpand: (() -> Unit)? = null,
+    onFocusChanged: ((Boolean) -> Unit)? = null,
     detail: (@Composable () -> Unit)? = null,
     content: @Composable RowScope.() -> Unit,
 ) {
@@ -104,7 +107,9 @@ private fun RowCard(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(Space.md),
                 modifier = Modifier
+                    .onFocusChanged { onFocusChanged?.invoke(it.isFocused) }
                     .then(if (onToggleExpand != null) Modifier.clickable(onClick = onToggleExpand) else Modifier)
+                    .focusRing(Radius.md)
                     .padding(horizontal = Layout.rowPadH, vertical = Layout.rowPadV),
                 content = content,
             )
@@ -207,7 +212,7 @@ private fun ActionChip(text: String, background: Color, foreground: Color, onCli
     Surface(
         color = background,
         shape = RoundedCornerShape(Radius.pill),
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth().focusRing(Radius.pill),
         onClick = onClick,
     ) {
         Text(
@@ -325,6 +330,7 @@ fun PendingRow(
     onRefresh: () -> Unit,
     onToggleSilence: () -> Unit,
     onDelete: () -> Unit,
+    onFocusedChange: (Boolean) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val dark = LocalIsDark.current
@@ -339,6 +345,7 @@ fun PendingRow(
         modifier = modifier.then(emphasisModifier(row)),
         expanded = expanded,
         onToggleExpand = onToggleExpand,
+        onFocusChanged = onFocusedChange,
         detail = { RowDetail(row, onRefresh, onToggleSilence, onDelete) },
     ) {
         NameCell(row.name, row.registry, MaterialTheme.colorScheme.onSurface)
@@ -372,6 +379,7 @@ fun ErrorRow(
     onRefresh: () -> Unit,
     onToggleSilence: () -> Unit,
     onDelete: () -> Unit,
+    onFocusedChange: (Boolean) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val dark = LocalIsDark.current
@@ -387,6 +395,7 @@ fun ErrorRow(
             modifier = modifier.then(emphasisModifier(row)),
             expanded = expanded,
             onToggleExpand = onToggleExpand,
+            onFocusChanged = onFocusedChange,
             detail = { RowDetail(row, onRefresh, onToggleSilence, onDelete) },
         ) {
             NameCell(row.name, row.registry, palette.foreground)
@@ -436,6 +445,7 @@ fun OkRow(
     onRefresh: () -> Unit,
     onToggleSilence: () -> Unit,
     onDelete: () -> Unit,
+    onFocusedChange: (Boolean) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     if (row.checking) {
@@ -450,6 +460,7 @@ fun OkRow(
         modifier = modifier.alpha(alpha).then(emphasisModifier(row)),
         expanded = expanded,
         onToggleExpand = onToggleExpand,
+        onFocusChanged = onFocusedChange,
         detail = { RowDetail(row, onRefresh, onToggleSilence, onDelete) },
     ) {
         NameCell(row.name, row.registry, MaterialTheme.colorScheme.onSurface)
@@ -535,7 +546,7 @@ private fun RowMenu(
     val clipboard = LocalClipboardManager.current
 
     Box {
-        IconButton({ expanded = true }, modifier = Modifier.size(Layout.rowKebab)) {
+        IconButton({ expanded = true }, modifier = Modifier.size(Layout.rowKebab).focusRing(Radius.sm)) {
             SvgIcon(AppSvg.KEBAB, MaterialTheme.colorScheme.onSurfaceVariant, Modifier.size(IconSize.md))
         }
         DropdownMenu(expanded, { expanded = false }) {

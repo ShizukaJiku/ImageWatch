@@ -41,11 +41,18 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -61,6 +68,7 @@ import io.github.shizukajiku.imagewatch.ui.theme.Radius
 import io.github.shizukajiku.imagewatch.ui.theme.Space
 import io.github.shizukajiku.imagewatch.ui.theme.TabularNums
 import io.github.shizukajiku.imagewatch.ui.theme.TypeScale
+import io.github.shizukajiku.imagewatch.ui.theme.focusRing
 import io.github.shizukajiku.imagewatch.ui.theme.ghostBackground
 import io.github.shizukajiku.imagewatch.ui.theme.mutedText
 import io.github.shizukajiku.imagewatch.ui.theme.statusColors
@@ -127,6 +135,12 @@ fun ImagesScreen(
             var okOpen by rememberSaveable { mutableStateOf(okRows.size <= 12) }
             val listState = rememberLazyListState()
 
+            // Qué fila tiene el foco de teclado ahora mismo -no cuál está desplegada, ese es
+            // `state.expandedRow`-. Solo lo necesita Espacio, que decide a qué imagen reconocer;
+            // Enter y Escape no necesitan saber el nombre.
+            var focusedRowName by remember { mutableStateOf<String?>(null) }
+            val focusManager = LocalFocusManager.current
+
             val entries = buildList {
                 if (pendingRows.isNotEmpty()) {
                     add(Entry.PendingHeader)
@@ -155,7 +169,47 @@ fun ImagesScreen(
             }
 
             LazyColumn(
-                Modifier.weight(1f).fillMaxWidth(),
+                Modifier.weight(1f).fillMaxWidth().onPreviewKeyEvent { event ->
+                    if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+                    when (event.key) {
+                        Key.DirectionDown -> {
+                            focusManager.moveFocus(FocusDirection.Down)
+                            true
+                        }
+                        Key.DirectionUp -> {
+                            focusManager.moveFocus(FocusDirection.Up)
+                            true
+                        }
+                        Key.Spacebar -> {
+                            val name = focusedRowName
+                            if (name != null && pendingRows.any { it.name == name }) {
+                                onAcknowledge(name)
+                                true
+                            } else {
+                                false
+                            }
+                        }
+                        Key.Enter, Key.NumPadEnter -> {
+                            val name = focusedRowName
+                            if (name != null) {
+                                onToggleExpand(name)
+                                true
+                            } else {
+                                false
+                            }
+                        }
+                        Key.Escape -> {
+                            val open = state.expandedRow
+                            if (open != null) {
+                                onToggleExpand(open)
+                                true
+                            } else {
+                                false
+                            }
+                        }
+                        else -> false
+                    }
+                },
                 state = listState,
                 contentPadding = PaddingValues(
                     start = Space.xl,
@@ -185,6 +239,13 @@ fun ImagesScreen(
                                 onRefresh = { onRefresh(entry.row.name) },
                                 onToggleSilence = { onToggleSilence(entry.row.name) },
                                 onDelete = { onDelete(entry.row.name) },
+                                onFocusedChange = { focused ->
+                                    focusedRowName = if (focused) {
+                                        entry.row.name
+                                    } else {
+                                        focusedRowName.takeUnless { it == entry.row.name }
+                                    }
+                                },
                                 modifier = itemMotion,
                             )
 
@@ -199,6 +260,13 @@ fun ImagesScreen(
                                 onRefresh = { onRefresh(entry.row.name) },
                                 onToggleSilence = { onToggleSilence(entry.row.name) },
                                 onDelete = { onDelete(entry.row.name) },
+                                onFocusedChange = { focused ->
+                                    focusedRowName = if (focused) {
+                                        entry.row.name
+                                    } else {
+                                        focusedRowName.takeUnless { it == entry.row.name }
+                                    }
+                                },
                                 modifier = itemMotion,
                             )
 
@@ -229,6 +297,13 @@ fun ImagesScreen(
                                 onRefresh = { onRefresh(entry.row.name) },
                                 onToggleSilence = { onToggleSilence(entry.row.name) },
                                 onDelete = { onDelete(entry.row.name) },
+                                onFocusedChange = { focused ->
+                                    focusedRowName = if (focused) {
+                                        entry.row.name
+                                    } else {
+                                        focusedRowName.takeUnless { it == entry.row.name }
+                                    }
+                                },
                                 modifier = itemMotion,
                             )
                         }
@@ -424,6 +499,7 @@ private fun NoticeBanner(state: ImagesUiState, onRetry: () -> Unit) {
                             color = MaterialTheme.colorScheme.surfaceVariant,
                             shape = RoundedCornerShape(Radius.pill),
                             onClick = onRetry,
+                            modifier = Modifier.focusRing(Radius.pill),
                         ) {
                             Text(
                                 "Reintentar ahora",
@@ -468,7 +544,7 @@ private fun OkSectionHeader(open: Boolean, count: Int, names: String, trace: Str
         color = ghostBackground(dark),
         shape = RoundedCornerShape(Radius.md),
         onClick = onToggle,
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth().focusRing(Radius.md),
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
@@ -534,6 +610,7 @@ private fun HeaderChip(text: String, onClick: () -> Unit) {
         color = MaterialTheme.colorScheme.primaryContainer,
         shape = RoundedCornerShape(Radius.pill),
         onClick = onClick,
+        modifier = Modifier.focusRing(Radius.pill),
     ) {
         Text(
             text,
