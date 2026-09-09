@@ -427,11 +427,16 @@ fun main() {
                         Column {
                             // La X de la barra propia cierra igual que onCloseRequest, asi que
                             // limpia lo mismo: el resaltado y la marca de foco.
-                            TitleBar("ImageWatch — imágenes monitoreadas") {
-                                windowVisible = false
-                                viewModel.clearHighlight()
-                                wiring.windowFocused.value = false
-                            }
+                            TitleBar(
+                                title = "ImageWatch — imágenes monitoreadas",
+                                mutedAll = config.mutedAll,
+                                onToggleMuteAll = { wiring.applyConfig(config.copy(mutedAll = !config.mutedAll)) },
+                                onClose = {
+                                    windowVisible = false
+                                    viewModel.clearHighlight()
+                                    wiring.windowFocused.value = false
+                                },
+                            )
                             MainScreen(wiring, viewModel, cerrarApp)
                         }
                     }
