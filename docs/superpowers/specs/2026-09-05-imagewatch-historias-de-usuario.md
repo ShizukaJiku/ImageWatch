@@ -60,32 +60,16 @@ para empezar a vigilarlo.
 Código: `ImagesViewModel.addImage`
 Prueba: `ImagesViewModelTest` («un nombre valido se agrega»)
 
-### H-04 · Renombrar una imagen a su propio nombre no es un duplicado
+### H-04 · ~~Renombrar una imagen a su propio nombre no es un duplicado~~ (retirada en el rediseño, 2026-09-08)
 
-Como usuario que edita el nombre de una imagen
-quiero poder guardar sin haberlo cambiado
-para que la validación de duplicados no me bloquee por mi propio nombre actual.
+El rediseño retira el renombrado: el origen de una imagen es su identidad, y para cambiarla se
+quita y se vuelve a agregar. `ImagesViewModel.renameImage` y `ImagesViewModel.saveName` ya no
+existen; `VersionPollingService.renameImage` y `ImageStateStore.rename` quedan en el núcleo sin
+llamador desde la interfaz.
 
-**Dado** que vigilo `alpha`
-**Cuando** «renombro» `alpha` a `alpha` sin cambiar nada
-**Entonces** el guardado se acepta, sin mensaje de error.
+### H-05 · ~~Renombrar una imagen conserva su versión reconocida~~ (retirada en el rediseño, 2026-09-08)
 
-Código: `ImagesViewModel.renameImage`, `ImagesViewModel.saveName`
-Prueba: `ImagesViewModelTest` («renombrar no colisiona con el propio nombre»)
-
-### H-05 · Renombrar una imagen conserva su versión reconocida
-
-Como usuario que corrige el nombre de una imagen ya vigilada
-quiero que conserve lo que ya había reconocido de ella
-para que renombrar no me obligue a volver a ver el mismo aviso.
-
-**Dado** `alpha` con una versión ya reconocida
-**Cuando** la renombro a `alpha-renombrada`
-**Entonces** `alpha-renombrada` nace con esa misma versión reconocida
-**Y** la entrada antigua bajo `alpha` no queda huérfana en el almacén de estado.
-
-Código: `ImagesViewModel.saveName`, `VersionPollingService.renameImage`, `ImageStateStore.rename`
-Prueba: `ImagesViewModelTest` («renombrar una imagen conserva su version reconocida»)
+Ver H-04.
 
 ### H-06 · Eliminar una imagen la retira de la lista
 
@@ -126,6 +110,51 @@ para ver el estado conjunto de un vistazo.
 
 Código: `ImagesViewModel.onSnapshot`, `ImagesViewModel.derive`
 Prueba: `ImagesViewModelTest` («el estado refleja el snapshot tras un ciclo»)
+
+### H-90 · Abrir una fila muestra su detalle en su sitio (rediseño, 2026-09-08)
+
+Como operador que quiere saber más de una imagen
+quiero pulsar la fila y ver su detalle desplegarse debajo, sin partir la ventana
+para consultar origen, última versión y cuándo se detectó, y tener a mano sus acciones.
+
+**Dado** una fila cualquiera de la bandeja
+**Cuando** hago clic en ella, en un punto que no sea un control
+**Entonces** se despliega bajo la fila una banda con Nombre, Origen, Última versión y Detectada,
+más las acciones Comprobar ahora, Copiar referencia, Silenciar avisos y Quitar de la lista
+**Y** volver a pulsarla la pliega
+**Y** abrir otra fila cierra la anterior: solo hay una desplegada a la vez.
+
+Código: `ImagesViewModel.toggleExpand`, `ImageRow.RowCard`/`RowDetail`
+Prueba: `ImagesViewModelTest` («abrir una fila fija expandedRow y volver a pulsarla lo limpia», «abrir otra fila cierra la anterior»)
+
+### H-91 · Copiar referencia copia solo el origen y avisa con un cambio de icono (rediseño, 2026-09-08)
+
+Como operador que necesita la referencia de una imagen
+quiero copiarla al portapapeles sin que salte un aviso
+para no interrumpir lo que estoy haciendo.
+
+**Dado** una fila abierta, o su menú de más acciones
+**Cuando** pulso «Copiar referencia»
+**Entonces** el portapapeles recibe el origen de la imagen (`registry.local/alpha`), sin `:versión`
+**Y** la única señal es la etiqueta de la píldora, que pasa a «Copiado» durante dos segundos.
+
+Código: `ImageRow.RowDetail`/`RowMenu`
+Prueba: sin prueba unitaria (portapapeles); repaso visual.
+
+### H-92 · Marcar «Visto» reconoce al momento y deja un rastro (rediseño, 2026-09-08)
+
+Como operador que ya vio la versión nueva
+quiero que al marcarla como vista la fila salga de «Versión nueva» sin más
+para no tener que confirmar ni esperar una ventana de deshacer.
+
+**Dado** una imagen en «Versión nueva»
+**Cuando** pulso «Visto», en su fila o en su menú
+**Entonces** la imagen pasa a «Al día» al momento, animando su alto
+**Y** la cabecera plegada de «Al día» muestra «<nombre> se ha movido aquí» durante 4 s
+**Y** no aparece ninguna línea de «Deshacer».
+
+Código: `ImagesViewModel.acknowledge`
+Prueba: `ImagesViewModelTest` («reconocer una imagen la mueve a «Al dia» y deja un rastro que se apaga solo»)
 
 ## Sondeo
 
@@ -926,21 +955,21 @@ para saber que se registró.
 **Cuando** lo agrego
 **Entonces** suena el sonido de éxito.
 
-Código: `ImagesViewModel.saveName`
+Código: `ImagesViewModel.addImage`
 Prueba: `ImagesViewModelTest` («agregar una imagen valida reproduce el sonido de exito»)
 
-### H-69 · Reconocer, renombrar y guardar los ajustes también confirman con un sonido de éxito
+### H-69 · Reconocer y guardar los ajustes también confirman con un sonido de éxito
 
 Como usuario
-quiero la misma confirmación audible al reconocer una imagen, renombrarla o guardar mis ajustes
+quiero la misma confirmación audible al reconocer una imagen o guardar mis ajustes
 para que toda acción que persiste una decisión mía se confirme igual.
 
 **Dado** cualquiera de estas acciones
-**Cuando** la completo con éxito (reconocer una imagen, reconocer todas, renombrar, guardar ajustes)
+**Cuando** la completo con éxito (reconocer una imagen, reconocer todas, guardar ajustes)
 **Entonces** suena el sonido de éxito.
 
-Código: `ImagesViewModel.acknowledge`, `ImagesViewModel.acknowledgeAll`, `ImagesViewModel.saveName` (rama de renombrar), `Wiring.applyConfig`
-Prueba: `ImagesViewModelTest` («reconocer una imagen reproduce el sonido de exito», «reconocer todas reproduce el sonido de exito», «renombrar una imagen reproduce el sonido de exito»); la rama de `Wiring.applyConfig` (guardar ajustes) queda fuera — depende de la familia `SettingsViewModel.save`/botón «Guardar» que reescribe la Tarea 10
+Código: `ImagesViewModel.acknowledge`, `ImagesViewModel.acknowledgeAll`, `Wiring.applyConfig`
+Prueba: `ImagesViewModelTest` («reconocer una imagen reproduce el sonido de exito», «reconocer todas reproduce el sonido de exito»); la rama de `Wiring.applyConfig` (guardar ajustes) queda fuera — depende de la familia `SettingsViewModel.save`/botón «Guardar» que reescribe la Tarea 10 (fase 4 del rediseño la retira)
 
 ### H-70 · Una caída general no repite el sonido de error en ciclos sucesivos
 
