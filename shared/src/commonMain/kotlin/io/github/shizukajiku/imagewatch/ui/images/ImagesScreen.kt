@@ -49,6 +49,7 @@ import io.github.shizukajiku.imagewatch.ui.theme.Layout
 import io.github.shizukajiku.imagewatch.ui.theme.LocalIsDark
 import io.github.shizukajiku.imagewatch.ui.theme.Radius
 import io.github.shizukajiku.imagewatch.ui.theme.Space
+import io.github.shizukajiku.imagewatch.ui.theme.TabularNums
 import io.github.shizukajiku.imagewatch.ui.theme.TypeScale
 import io.github.shizukajiku.imagewatch.ui.theme.ghostBackground
 import io.github.shizukajiku.imagewatch.ui.theme.mutedText
@@ -251,11 +252,13 @@ private fun Header(
                     "${state.pending} imágenes que atender",
                     fontWeight = FontWeight.Bold,
                     fontSize = TypeScale.title,
+                    style = TabularNums,
                 )
                 Text(
                     "de ${state.total} vigiladas · comprobando cada ${state.pollIntervalSeconds}s",
                     fontSize = TypeScale.meta,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = TabularNums,
                 )
             }
             // Comprobar todas ya. Junto a los demas iconos y no en la barra de sondeo: es una
@@ -450,7 +453,7 @@ private fun OkSectionHeader(open: Boolean, count: Int, names: String, trace: Str
             )
             Box(Modifier.size(8.dp).background(palette.foreground, CircleShape))
             Text("Al día", fontSize = TypeScale.body, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Text(count.toString(), fontSize = TypeScale.meta, color = mutedText(dark))
+            Text(count.toString(), fontSize = TypeScale.meta, color = mutedText(dark), style = TabularNums)
             if (!open && names.isNotEmpty()) {
                 Text(
                     names,
@@ -485,7 +488,12 @@ private fun SectionHeader(dotColor: Color, title: String, count: Int, trailing: 
     ) {
         Box(Modifier.size(8.dp).background(dotColor, CircleShape))
         Text(title, fontWeight = FontWeight.Bold, fontSize = TypeScale.body, color = dotColor)
-        Text(count.toString(), fontSize = TypeScale.meta, color = mutedText(LocalIsDark.current))
+        Text(
+            count.toString(),
+            fontSize = TypeScale.meta,
+            color = mutedText(LocalIsDark.current),
+            style = TabularNums,
+        )
         Spacer(Modifier.weight(1f))
         trailing()
     }
@@ -583,6 +591,7 @@ private fun Footer(state: ImagesUiState, mutedAll: Boolean) {
             color = mutedText(dark),
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
+            style = TabularNums,
             modifier = Modifier.width(Layout.footNote),
         )
         Spacer(Modifier.weight(1f))
@@ -607,6 +616,7 @@ private fun Footer(state: ImagesUiState, mutedAll: Boolean) {
             fontSize = TypeScale.caption,
             color = mutedText(dark),
             textAlign = TextAlign.End,
+            style = TabularNums,
             modifier = Modifier.width(Layout.footState),
         )
     }
