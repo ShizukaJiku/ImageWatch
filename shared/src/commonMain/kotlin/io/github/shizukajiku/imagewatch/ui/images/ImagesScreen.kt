@@ -116,12 +116,14 @@ fun ImagesScreen(
                 }
             }
 
-            var okOpen by rememberSaveable { mutableStateOf(true) }
-            val listState = rememberLazyListState()
-
             val pendingRows = state.rows.filter { it.status == ImageStatus.PENDING }
             val errorRows = state.rows.filter { it.status == ImageStatus.ERROR }
             val okRows = state.rows.filter { it.status != ImageStatus.PENDING && it.status != ImageStatus.ERROR }
+
+            // Blueprint: «Por defecto plegada por encima de 12 imágenes». `rememberSaveable`
+            // conserva la elección posterior del usuario; el valor inicial solo decide el arranque.
+            var okOpen by rememberSaveable { mutableStateOf(okRows.size <= 12) }
+            val listState = rememberLazyListState()
 
             val entries = buildList {
                 if (pendingRows.isNotEmpty()) {
