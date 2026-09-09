@@ -433,8 +433,6 @@ fun main() {
                             // limpia lo mismo: el resaltado y la marca de foco.
                             TitleBar(
                                 title = "ImageWatch — imágenes monitoreadas",
-                                mutedAll = config.mutedAll,
-                                onToggleMuteAll = { wiring.applyConfig(config.copy(mutedAll = !config.mutedAll)) },
                                 onClose = {
                                     windowVisible = false
                                     viewModel.clearHighlight()
