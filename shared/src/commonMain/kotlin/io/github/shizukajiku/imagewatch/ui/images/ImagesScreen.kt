@@ -176,10 +176,12 @@ fun ImagesScreen(
                             focusManager.moveFocus(FocusDirection.Down)
                             true
                         }
+
                         Key.DirectionUp -> {
                             focusManager.moveFocus(FocusDirection.Up)
                             true
                         }
+
                         Key.Spacebar -> {
                             val name = focusedRowName
                             if (name != null && pendingRows.any { it.name == name }) {
@@ -189,6 +191,7 @@ fun ImagesScreen(
                                 false
                             }
                         }
+
                         Key.Enter, Key.NumPadEnter -> {
                             val name = focusedRowName
                             if (name != null) {
@@ -198,6 +201,7 @@ fun ImagesScreen(
                                 false
                             }
                         }
+
                         Key.Escape -> {
                             val open = state.expandedRow
                             if (open != null) {
@@ -207,6 +211,7 @@ fun ImagesScreen(
                                 false
                             }
                         }
+
                         else -> false
                     }
                 },
