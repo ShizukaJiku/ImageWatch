@@ -141,17 +141,26 @@ class VersionPollingService(
             return
         }
         val newlyPending = pendingNews(previous, current)
-        if (newlyPending.isEmpty()) {
-            return
+        if (newlyPending.isNotEmpty()) {
+            // Igual que publish/publishStart: un notificador que lanza no puede tumbar el ciclo y
+            // dejar a publish(snapshot) sin ejecutarse, o el pulso de la interfaz se quedaría
+            // encendido para siempre.
+            notifiers.forEach { notifier ->
+                try {
+                    notifier.notifyUpdates(newlyPending)
+                } catch (e: RuntimeException) {
+                    log.warn("Un notificador falló al recibir las transiciones", e)
+                }
+            }
         }
-        // Igual que publish/publishStart: un notificador que lanza no puede tumbar el ciclo y dejar
-        // a publish(snapshot) sin ejecutarse, o el pulso de la interfaz se quedaría encendido para
-        // siempre.
-        notifiers.forEach { notifier ->
-            try {
-                notifier.notifyUpdates(newlyPending)
-            } catch (e: RuntimeException) {
-                log.warn("Un notificador falló al recibir las transiciones", e)
+        val newlyFailed = transitionedInto(previous, current, ImageStatus.ERROR)
+        if (newlyFailed.isNotEmpty()) {
+            notifiers.forEach { notifier ->
+                try {
+                    notifier.notifyFailures(newlyFailed)
+                } catch (e: RuntimeException) {
+                    log.warn("Un notificador falló al recibir los fallos", e)
+                }
             }
         }
     }
