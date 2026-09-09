@@ -227,7 +227,7 @@ private fun ToastCard(
                     }
                 }
                 Text(
-                    toast.body,
+                    toast.sub,
                     fontSize = TypeScale.meta,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(horizontal = Space.md),
