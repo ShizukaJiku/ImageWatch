@@ -197,9 +197,11 @@ private fun RowScope.SkipAndPillCell(skip: String, pillText: String, pillBackgro
 
 @Composable
 private fun RowScope.ActionsCell(chip: @Composable () -> Unit, menu: @Composable () -> Unit) {
+    // Columna de 128 dp, hueco de 6 dp entre el chip y el kebab -Medidas.dc.html §07-: ninguno
+    // de los dos es un paso de Space (4 u 8), es la cota propia de esta columna.
     Row(
-        Modifier.width(Layout.rowChip + Space.xs + Layout.rowKebab),
-        horizontalArrangement = Arrangement.spacedBy(Space.xs, Alignment.End),
+        Modifier.width(128.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.End),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(Modifier.width(Layout.rowChip), contentAlignment = Alignment.Center) { chip() }
@@ -516,8 +518,7 @@ private fun CheckingRow(row: ImageRowState, modifier: Modifier = Modifier) {
         NameCell(row.name, row.registry, MaterialTheme.colorScheme.onSurface)
         Row(
             Modifier.width(
-                Layout.rowAge + Space.md + Layout.rowSkip + Layout.rowPill + Space.md + Layout.rowChip + Space.xs +
-                    Layout.rowKebab,
+                Layout.rowAge + Space.md + Layout.rowSkip + Layout.rowPill + Space.md + 128.dp,
             ),
             horizontalArrangement = Arrangement.End,
             verticalAlignment = Alignment.CenterVertically,
