@@ -77,14 +77,18 @@ todo el rediseño).
    llegan de hilos reales que leen `toasts.value` inmediatamente después de escribir sin ceder el
    hilo, y la tubería reactiva publicaba el recorte en una corrutina aparte que podía llegar tarde
    —los tests de `ToastStateTest` lo detectaron como fallos intermitentes durante la implementación.
-3. `RESUMEN` "Ver todas" en `Main.kt` solo trae la ventana al frente (`windowVisible = true;
-   traerAlFrente++`); no fuerza `screen = IMAGES` si Ajustes está abierto (ese estado vive dentro de
-   `MainScreen`, no en `Wiring`) ni hace scroll a la primera pendiente — el spec lo marcaba como
-   "si hace falta".
-4. El repaso visual de Task 4 (`:desktopApp:run`) confirmó que la app arranca y corre sin excepción
-   con la rejilla nueva, pero no se disparó un `ERROR` real para ver esa variante del toast en
-   pantalla (habría exigido tocar `IMAGE_VERSION_URL`/`SIMULATION_MODE`); esa combinación queda
-   verificada solo por `ToastStateTest`/`ToastNotificationPortTest`, no visualmente.
+3. ~~`RESUMEN` "Ver todas" no fuerza `screen = IMAGES` si Ajustes está abierto~~ **Resuelto en el
+   repaso** (2026-09-09): `screen` se subió de `MainScreen` a `main()` (mismo sitio que
+   `windowVisible`/`traerAlFrente`), y el `onAction` de `RESUMEN` en `Main.kt` ahora hace también
+   `screen = Screen.IMAGES`. Sigue sin hacer scroll a la primera pendiente — el spec lo marcaba
+   como "si hace falta", y no se ha pedido.
+4. `ERROR` no se verificó visualmente y **se acepta así** (decisión del repaso, 2026-09-09): para
+   ver el toast en pantalla hace falta una imagen que pase de OK/UNKNOWN a ERROR **dentro del mismo
+   arranque** del proceso — la regla "el primer ciclo no avisa" bloquea el aviso si arranca ya en
+   error, y ni `SIMULATION_MODE` (nunca falla) ni un registry real inalcanzable (falla ya en el
+   primer ciclo, que no cuenta) pueden producir esa transición sin tocar código de infraestructura
+   solo para esta prueba puntual. Cobertura por `ToastStateTest`/`ToastNotificationPortTest`
+   aceptada como suficiente.
 
 ## Verde al cerrar la fase 4
 
@@ -205,8 +209,9 @@ no envuelve literales de string largos ni firmas: hay que partirlas a mano.
    mecanismo, y el único consumidor multiplataforma (`SettingsViewModel`) solo ve la interfaz.
 2. `reg.exe` en vez de `java.util.prefs` (las prefs de Java viven en `HKCU\Software\JavaSoft\Prefs`,
    no en `Run`). Evita además añadir módulo a jlink.
-3. `wipeLocalData` **cierra la app** (no recablea `Wiring`). El `ConfirmDialog` no dice que se
-   cerrará — el usuario lo descubre al confirmar. Pendiente: ¿añadir ese texto al `body`?
+3. ~~`wipeLocalData` cierra la app sin que el `ConfirmDialog` lo avise~~ **Resuelto en el repaso**
+   (2026-09-09): el `body` de «Borrar datos locales» ahora dice explícitamente que la aplicación se
+   cierra y que hay que volver a abrirla.
 4. `NumberField`/`UrlField` son `BasicTextField` con decoración propia a 34 dp, no `OutlinedTextField`.
    Commit en blur y en Enter (`onFocusChanged { !isFocused }` + `KeyboardActions(onDone)`).
 5. Caption del segmentado usa `isSystemInDarkTheme()` — dice el tema que pide el SO aunque el usuario
@@ -224,14 +229,23 @@ no envuelve literales de string largos ni firmas: hay que partirlas a mano.
 - **`Float.toDouble()`** no da el literal exacto (`0.2f` → `0.20000000298023224`). En tests comparar
   de vuelta en `Float`.
 
+## Repaso del usuario (2026-09-09)
+
+Se repasaron los puntos abiertos de las 4 fases uno a uno. Resultado:
+
+- **Arreglados:** fase 4 punto 3 (aviso de cierre en «Borrar datos locales»), fase 5 punto 3
+  (`RESUMEN` fuerza `Screen.IMAGES`).
+- **Aceptados tal cual, sin cambio:** fase 4 puntos 1, 2, 4, 5, 6; fase 5 puntos 1, 2, 4 (ver el
+  detalle de por qué el 4 no se puede verificar sin tocar infraestructura); fase 6 punto 1; fase 7
+  puntos 1-4.
+- **Pendientes de repaso manual del propio usuario** (no automatizables desde aquí): fase 6 punto 2
+  (toggle bidireccional de la campana) y fase 7 punto 5 (lista de comprobación de teclado completa).
+
 ## Qué pedir al retomar
 
-El rediseño está completo. Al retomar, lo único que queda es:
+El rediseño está completo y repasado. Al retomar, lo único que queda es:
 
-1. Confirmar si la revisión de las fases 4, 5, 6 y 7 dejó cambios que aplicar — repasar los
-   «Puntos abiertos» de cada fase, arriba.
-2. Recorrer a ojo la lista de comprobación manual de la fase 7 (spec §12): flechas, Espacio, Enter,
-   Escape, Tab, anillo visible en cabecera/Ajustes/diálogo.
-3. Decidir qué hacer con `feature/rediseno-fase-4-ajustes` (las 7 fases juntas): sin remoto en este
-   repo, la opción natural es fusionarla a `main` cuando el usuario dé el visto bueno — no se ha
-   hecho todavía, a la espera de esa revisión.
+1. El repaso manual pendiente de fase 6/fase 7 (arriba), si no se hizo ya.
+2. Decidir qué hacer con `feature/rediseno-fase-4-ajustes` (las 7 fases juntas, más las dos
+   correcciones de este repaso): sin remoto en este repo, la opción natural es fusionarla a `main`
+   cuando el usuario dé el visto bueno — no se ha hecho todavía.
