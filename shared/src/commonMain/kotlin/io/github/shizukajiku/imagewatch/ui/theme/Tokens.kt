@@ -1,5 +1,6 @@
 package io.github.shizukajiku.imagewatch.ui.theme
 
+import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
@@ -62,6 +63,13 @@ object Motion {
     const val EMPHASIS = 400
     const val PULSE = 700
     const val BUMP = 600
+
+    /**
+     * Curva de énfasis para las entradas y salidas de fila y de sección (Blueprint 06:
+     * «400 ms con énfasis»). Sale rápido y frena al final, para que un elemento que aparece o
+     * desaparece se lea como un movimiento, no como un parpadeo.
+     */
+    val emphasisEasing = CubicBezierEasing(0.2f, 0f, 0f, 1f)
 }
 
 /**
@@ -77,4 +85,19 @@ object Dwell {
 
     /** Cuanto dura el rastro de «X se ha movido aquí» en la línea plegada de «Al día». */
     const val TRACE_MILLIS = 4000L
+}
+
+/**
+ * Sombra y elevación tonal. Categoría propia porque no es espacio ni forma: hasta ahora vivía
+ * como literal (`tonalElevation = 6.dp` en la tarjeta de aviso) o como sombra escrita a mano.
+ */
+object Elevation {
+    /** Las tarjetas de fila no se elevan: se separan con 8 dp de hueco, no con sombra. */
+    val card = 0.dp
+
+    /** La tarjeta de aviso, que se dibuja sobre cualquier ventana. */
+    val toast = 6.dp
+
+    /** El diálogo de confirmación, sobre su velo. */
+    val dialog = 24.dp
 }
