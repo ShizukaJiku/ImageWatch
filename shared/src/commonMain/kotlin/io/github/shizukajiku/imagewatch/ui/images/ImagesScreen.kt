@@ -442,9 +442,15 @@ private fun Header(
             IconButton(onOpenSettings) {
                 SvgIcon(AppSvg.GEAR, MaterialTheme.colorScheme.onSurfaceVariant, Modifier.size(IconSize.lg))
             }
-            Button(onAdd, shape = RoundedCornerShape(Radius.pill)) {
+            Button(
+                onAdd,
+                modifier = Modifier.height(33.dp),
+                shape = RoundedCornerShape(Radius.pill),
+                contentPadding = PaddingValues(horizontal = Space.lg, vertical = Space.sm),
+            ) {
                 SvgIcon(AppSvg.PLUS, MaterialTheme.colorScheme.onPrimary, Modifier.size(IconSize.sm))
-                Text("  Agregar imagen")
+                Spacer(Modifier.width(Space.sm))
+                Text("Agregar imagen", fontSize = TypeScale.body, fontWeight = FontWeight.SemiBold)
             }
         }
     }
@@ -639,7 +645,9 @@ private fun EmptyState(pollIntervalSeconds: Long, onAdd: () -> Unit) {
     ) {
         Surface(color = MaterialTheme.colorScheme.surfaceVariant, shape = CircleShape) {
             Box(Modifier.size(44.dp), contentAlignment = Alignment.Center) {
-                SvgIcon(AppSvg.PLUS, MaterialTheme.colorScheme.onSurfaceVariant, Modifier.size(IconSize.lg))
+                // 20 dp -Medidas.dc.html §06 "vacío"-: no es un paso de IconSize (14/16/18), es
+                // la cota propia de este icono, el único fuera de la lista de la bandeja.
+                SvgIcon(AppSvg.PLUS, MaterialTheme.colorScheme.onSurfaceVariant, Modifier.size(20.dp))
             }
         }
         Spacer(Modifier.height(Space.md))
