@@ -32,6 +32,7 @@ import io.github.shizukajiku.imagewatch.ui.theme.Radius
 import io.github.shizukajiku.imagewatch.ui.theme.Space
 import io.github.shizukajiku.imagewatch.ui.theme.TabularNums
 import io.github.shizukajiku.imagewatch.ui.theme.TypeScale
+import io.github.shizukajiku.imagewatch.ui.theme.focusRing
 
 /**
  * Diálogo de confirmación para las acciones que no se pueden deshacer (Blueprint «Diálogo de
@@ -109,6 +110,7 @@ fun ConfirmDialog(
                         color = MaterialTheme.colorScheme.surfaceVariant,
                         shape = RoundedCornerShape(Radius.pill),
                         onClick = onDismiss,
+                        modifier = Modifier.focusRing(Radius.pill),
                     ) {
                         Text(
                             "Cancelar",
@@ -125,6 +127,7 @@ fun ConfirmDialog(
                             onConfirm()
                             onDismiss()
                         },
+                        modifier = Modifier.focusRing(Radius.pill),
                     ) {
                         Text(
                             confirmLabel,
