@@ -156,6 +156,77 @@ para no tener que confirmar ni esperar una ventana de deshacer.
 Código: `ImagesViewModel.acknowledge`
 Prueba: `ImagesViewModelTest` («reconocer una imagen la mueve a «Al dia» y deja un rastro que se apaga solo»)
 
+### H-93 · Un ajuste se aplica al momento (rediseño, fase 4)
+
+Como usuario de la pantalla de ajustes
+quiero que cada cambio surta efecto en cuanto lo hago, sin pulsar «Guardar»
+para no tener que acordarme de confirmar.
+
+**Dado** la pantalla de ajustes
+**Cuando** cambio el tema, un toggle o el volumen
+**Entonces** la configuración se aplica y se persiste al instante, sin botón ni confirmación.
+
+Código: `SettingsViewModel.editAndApply`
+Prueba: `SettingsViewModelTest` («un toggle se aplica al instante», «el volumen se aplica al instante»)
+
+### H-94 · Un valor inválido no mueve nada (rediseño, fase 4)
+
+Como usuario que teclea un intervalo o una duración fuera de rango
+quiero ver el motivo en la línea de ayuda de ese campo, sin que el resto de la pantalla se recoloque
+para corregirlo sin perder de vista dónde estaba.
+
+**Dado** el campo de intervalo con «3» (por debajo del mínimo de 5 s)
+**Cuando** salgo del campo o pulso Enter
+**Entonces** la línea de ayuda de ese campo dice «El intervalo mínimo es 5 s.»
+**Y** la configuración no se aplica
+**Y** nada más de la pantalla cambia de posición (la línea de ayuda tiene altura reservada).
+
+Código: `SettingsViewModel.onIntervalCommit`, `SettingsViewModel.onToastSecondsCommit`
+Prueba: `SettingsViewModelTest` («un intervalo por debajo del minimo…», «un intervalo por encima del maximo…», «una duracion de aviso fuera de rango…»)
+
+### H-95 · Iniciar al encender el equipo (rediseño, fase 4)
+
+Como usuario que quiere que ImageWatch esté siempre vigilando
+quiero un interruptor que registre la app para arrancar al iniciar sesión
+para no tener que abrirla a mano cada día.
+
+**Dado** el toggle «Iniciar al encender el equipo» en Ajustes → Comprobación
+**Cuando** lo activo
+**Entonces** se escribe la clave `Run` del registro de usuario de Windows con la ruta del ejecutable
+**Y** al desactivarlo, la clave se borra.
+
+Código: `WindowsAutostart`, `SettingsViewModel.onAutostartChange`, `Wiring.autostart`
+Prueba: `WindowsAutostartTest`, `SettingsViewModelTest` («activar el autostart llega al puerto»)
+
+### H-96 · Restablecer ajustes (rediseño, fase 4)
+
+Como usuario que quiere volver a empezar con la configuración
+quiero devolver los ajustes a sus valores de fábrica sin perder mi lista de imágenes
+para no tener que reconstruir la vigilancia.
+
+**Dado** el botón «Restablecer ajustes» en el pie de Ajustes
+**Cuando** lo pulso y confirmo en el diálogo
+**Entonces** URL, intervalo, apariencia, avisos y volumen vuelven a los valores de arranque
+**Y** las imágenes vigiladas y su versión vista no se tocan.
+
+Código: `Wiring.resetSettings`
+Prueba: repaso visual.
+
+### H-97 · Borrar datos locales (rediseño, fase 4)
+
+Como usuario que se marcha del equipo
+quiero borrar todo lo que la app guarda aquí
+para no dejar rastro de qué vigilaba.
+
+**Dado** el botón «Borrar datos locales» en el pie de Ajustes
+**Cuando** lo pulso y confirmo «Borrar todo» en el diálogo
+**Entonces** se borran `config.json`, `tracked-images.json`, `silenced-images.json` e `images.json`
+**Y** la aplicación se cierra
+**Y** al volver a abrirla, arranca sembrada de cero desde el entorno.
+
+Código: `Wiring.wipeLocalData`
+Prueba: repaso visual.
+
 ## Sondeo
 
 ### H-09 · El sondeo arranca detenido
@@ -1112,78 +1183,43 @@ para saber qué voy a cambiar antes de tocar nada.
 
 **Dado** una configuración vigente concreta
 **Cuando** abro el formulario de ajustes
-**Entonces** cada campo muestra el valor que ya estaba aplicado (URL, intervalo, tema, etc.).
+**Entonces** cada campo muestra el valor que ya estaba aplicado (URL, intervalo, tema, etc.)
+**Y** el toggle «Iniciar al encender el equipo» refleja el estado del sistema.
 
 Código: `SettingsViewModel` (constructor)
-Prueba: `SettingsViewModelTest` («arranca con los valores vigentes»)
+Prueba: `SettingsViewModelTest` («arranca con los valores vigentes y el estado del autostart»)
 
-### H-80 · Guardar los ajustes entrega la configuración editada a quien la aplica
+### H-80 · ~~Guardar los ajustes entrega la configuración editada a quien la aplica~~ (retirada en el rediseño, fase 4)
 
-Como usuario que edita varios campos
-quiero que guardar aplique todos los cambios de una vez
-para no tener que guardar campo a campo.
+Ver H-93: el rediseño retira el botón «Guardar». Cada campo se aplica al momento.
 
-**Dado** varios campos editados en el formulario
-**Cuando** pulso guardar
-**Entonces** se entrega la configuración completa con todos los cambios
-**Y**, si no hay error, queda registrada la marca de guardado.
+### H-81 · ~~Un intervalo no numérico se rechaza sin llegar a aplicarse~~ (retirada en el rediseño, fase 4)
 
-Código: `SettingsViewModel.save`
-Prueba: `SettingsViewModelTest` («entrega al aplicador la configuracion editada»)
+Ver H-94: sigue rechazándose, pero en el commit del campo (blur/Enter) y con el mensaje en la
+línea de ayuda del propio campo, no junto a un botón «Guardar».
 
-### H-81 · Un intervalo no numérico se rechaza sin llegar a aplicarse
+### H-82 · ~~Una duración de aviso no numérica o no positiva se rechaza~~ (retirada en el rediseño, fase 4)
 
-Como usuario que teclea algo que no es un número en el intervalo
-quiero que se rechace antes de intentar aplicarlo
-para no dejar a la aplicación en un estado a medio configurar.
-
-**Dado** el campo de intervalo con un valor no numérico, como «cada rato»
-**Cuando** guardo
-**Entonces** aparece un mensaje de error
-**Y** quien aplica la configuración nunca llega a ser invocado.
-
-Código: `SettingsViewModel.save`
-Prueba: `SettingsViewModelTest` («un intervalo no numerico se rechaza sin llegar al aplicador»)
-
-### H-82 · Una duración de aviso no numérica o no positiva se rechaza
-
-Como usuario que teclea un valor inválido para cuánto dura un aviso en pantalla
-quiero que también se rechace, igual que el intervalo
-para no acabar con avisos que duran cero segundos o que ni siquiera son un número.
-
-**Dado** el campo de duración del aviso con un valor no numérico, cero o negativo
-**Cuando** guardo
-**Entonces** aparece un mensaje de error y no se aplica la configuración.
-
-Código: `SettingsViewModel.save`
-Prueba: pendiente: Tarea 10 (reescribe `SettingsViewModel` para que la configuración se aplique sin botón «Guardar»; una prueba de `save()` hoy nacería muerta)
+Ver H-94: la duración valida su rango (3–30 s) en el commit del campo.
 
 ### H-83 · El mensaje de quien aplica los ajustes se muestra tal cual
 
 Como usuario
-quiero ver el motivo exacto por el que un ajuste no se pudo guardar
+quiero ver el motivo exacto por el que un ajuste no se pudo aplicar
 para saber qué corregir, aunque la regla viva en el núcleo y no en el formulario.
 
 **Dado** un ajuste que el núcleo rechaza (por ejemplo, una URL sin HTTPS)
-**Cuando** guardo
-**Entonces** el formulario muestra el mismo mensaje que devolvió quien lo aplica, sin reescribirlo
-**Y** la marca de guardado no se actualiza.
+**Cuando** salgo del campo o pulso Enter
+**Entonces** la línea de ayuda de ese campo muestra el mismo mensaje que devolvió quien lo aplica,
+sin reescribirlo.
 
-Código: `SettingsViewModel.save`
-Prueba: `SettingsViewModelTest` («el mensaje del aplicador se muestra tal cual»)
+Código: `SettingsViewModel.onUrlCommit`
+Prueba: `SettingsViewModelTest` («una URL rechazada por el aplicador pinta la linea de ayuda de la URL»)
 
-### H-84 · Editar un campo limpia el error y la marca de guardado anteriores
+### H-84 · ~~Editar un campo limpia el error y la marca de guardado anteriores~~ (retirada en el rediseño, fase 4)
 
-Como usuario que corrige un valor tras un error
-quiero que el mensaje de error desaparezca en cuanto empiezo a corregir
-para no seguir viendo un aviso sobre un valor que ya cambié.
-
-**Dado** un error visible tras un guardado fallido, o la marca de «Guardado» de uno anterior
-**Cuando** edito cualquier campo del formulario
-**Entonces** tanto el error como la marca de guardado desaparecen.
-
-Código: `SettingsViewModel.edit`
-Prueba: pendiente: Tarea 10 (misma familia que H-82: depende de `SettingsViewModel.save`/botón «Guardar», que esa tarea reescribe)
+Sin marca de guardado. Editar un campo con error limpia su `*Error` (`onUrlChange`/
+`onIntervalChange`/`onToastSecondsChange` ponen el error a `null`).
 
 ### H-85 · El intervalo y el interruptor de sondeo viven en Ajustes, no en la lista de imágenes
 
