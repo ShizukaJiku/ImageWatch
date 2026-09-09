@@ -346,7 +346,7 @@ private fun Header(
                     style = TabularNums,
                 )
                 Text(
-                    "de ${state.total} vigiladas · comprobando cada ${state.pollIntervalSeconds}s",
+                    "de ${state.total} vigiladas · comprobando cada ${state.pollIntervalSeconds} s",
                     fontSize = TypeScale.meta,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = TabularNums,
@@ -480,6 +480,9 @@ private fun NoticeBanner(state: ImagesUiState, onRetry: () -> Unit) {
                     horizontalArrangement = Arrangement.spacedBy(Space.sm),
                     modifier = Modifier.padding(horizontal = Space.lg, vertical = 11.dp),
                 ) {
+                    if (!disconnected) {
+                        SvgIcon(AppSvg.CHECK, palette.foreground, Modifier.size(IconSize.sm))
+                    }
                     Text(
                         if (disconnected) "No se puede acceder al registry" else "Nada que atender",
                         color = palette.foreground,
