@@ -5,14 +5,16 @@ Documento de continuidad para retomar en otra sesión. Se lee **antes** que los 
 - **Spec:** `docs/superpowers/specs/2026-09-08-imagewatch-rediseno-design.md` (7 fases, decisiones D-1..D-7).
 - **Plan fases 1–3:** `docs/superpowers/plans/2026-09-08-imagewatch-rediseno-fases-1-3.md` (completado).
 - **Plan fase 4:** `docs/superpowers/plans/2026-09-08-imagewatch-rediseno-fase-4.md` (completado).
-- **Plan fase 5:** `docs/superpowers/plans/2026-09-09-imagewatch-rediseno-fase-5.md` (escrito, sin ejecutar).
+- **Plan fase 5:** `docs/superpowers/plans/2026-09-09-imagewatch-rediseno-fase-5.md` (completado).
 - **Planes fases 6–7:** aún NO escritos. Se escriben al retomar, uno por fase, con el skill `superpowers:writing-plans`.
 - **Contrato de comportamiento:** `docs/superpowers/specs/2026-09-05-imagewatch-historias-de-usuario.md`, actualizado hasta H-97.
 
 ## Dónde estamos
 
-**4 de 7 fases hechas.** Cada fase es un PR / rama apilada sobre la anterior. **No hay remoto**: la
-revisión es de rama, no de PR de GitHub.
+**5 de 7 fases hechas.** Cada fase es un PR / rama apilada sobre la anterior. **No hay remoto**: la
+revisión es de rama, no de PR de GitHub. La fase 5 se hizo directamente sobre
+`feature/rediseno-fase-5-aviso` y se fusionó (fast-forward) de vuelta a `feature/rediseno-fase-4-ajustes`
+al terminar; la rama de la fase 5 ya no existe.
 
 | Fase | Rama | Estado |
 |---|---|---|
@@ -20,11 +22,32 @@ revisión es de rama, no de PR de GitHub.
 | 2 Bandeja (armazón) | `feature/rediseno-fase-2-bandeja` | Hecha |
 | 3 Fila abierta + quitar undo/cola/rename | `feature/rediseno-fase-3-fila-abierta` | Hecha |
 | 4 Ajustes | `feature/rediseno-fase-4-ajustes` | Hecha; **el usuario la está revisando** |
-| 5 Aviso | `feature/rediseno-fase-5-aviso` (sin crear) | Pendiente, sin plan |
+| 5 Aviso | fusionada en `feature/rediseno-fase-4-ajustes` | Hecha; **el usuario la está revisando** |
 | 6 Barra de título | `feature/rediseno-fase-6-barra-titulo` (sin crear) | Pendiente, sin plan |
 | 7 Teclado | `feature/rediseno-fase-7-teclado` (sin crear) | Pendiente, sin plan |
 
-**Rama actual:** `feature/rediseno-fase-4-ajustes` (tip `0d0f914`).
+**Rama actual:** `feature/rediseno-fase-4-ajustes` (tip `00e7aa1`, incluye la fase 5).
+
+## Puntos abiertos de la fase 5 (el usuario los está revisando)
+
+1. Icono por `ToastKind` no estaba explícito en el spec: se eligió `BELL` para `NUEVA`/`SALTADAS`,
+   `WARNING` para `ERROR`, `CHECK_ALL` para `RESUMEN`. El tono de `RESUMEN` es un acento fijo
+   (`primaryContainer`/`onPrimaryContainer` en claro, su par en oscuro), no derivado de
+   `statusColors`, porque no describe un estado de imagen sino una acción de la interfaz.
+2. `toasts` (`ToastState.kt`) dejó de derivarse con `mutableToasts.map{}.stateIn(scope, Eagerly, ...)`
+   —como sugería el spec— y pasó a un `MutableStateFlow` que se recalcula de forma síncrona
+   (`publicar()`) justo después de cada escritura en la cola completa. Motivo: `show()`/`dismiss()`
+   llegan de hilos reales que leen `toasts.value` inmediatamente después de escribir sin ceder el
+   hilo, y la tubería reactiva publicaba el recorte en una corrutina aparte que podía llegar tarde
+   —los tests de `ToastStateTest` lo detectaron como fallos intermitentes durante la implementación.
+3. `RESUMEN` "Ver todas" en `Main.kt` solo trae la ventana al frente (`windowVisible = true;
+   traerAlFrente++`); no fuerza `screen = IMAGES` si Ajustes está abierto (ese estado vive dentro de
+   `MainScreen`, no en `Wiring`) ni hace scroll a la primera pendiente — el spec lo marcaba como
+   "si hace falta".
+4. El repaso visual de Task 4 (`:desktopApp:run`) confirmó que la app arranca y corre sin excepción
+   con la rejilla nueva, pero no se disparó un `ERROR` real para ver esa variante del toast en
+   pantalla (habría exigido tocar `IMAGE_VERSION_URL`/`SIMULATION_MODE`); esa combinación queda
+   verificada solo por `ToastStateTest`/`ToastNotificationPortTest`, no visualmente.
 
 ## Verde al cerrar la fase 4
 
@@ -83,7 +106,7 @@ no envuelve literales de string largos ni firmas: hay que partirlas a mano.
 | D-6 | «Modo simulación» fuera de la UI de Ajustes. Sigue por variable de entorno `SIMULATION_MODE` en `Main.kt`. `AppConfig.simulationMode` se mantiene. |
 | D-7 | Troceado por capa transversal, un PR/rama por fase. |
 
-## Fase 5 — Aviso (lo que toca, ver spec §10)
+## Fase 5 — Aviso (hecha; ver spec §10 y los puntos abiertos arriba)
 
 **Ficheros:** `ui/toast/ToastState.kt`, `ui/toast/ToastNotificationPort.kt`, `ui/toast/ToastWindow.kt`
 (`jvmMain`), `application/NotificationPort.kt` + `application/VersionPollingService.kt`.
@@ -163,6 +186,7 @@ no envuelve literales de string largos ni firmas: hay que partirlas a mano.
 
 ## Qué pedir al retomar
 
-1. Confirmar si la revisión de la fase 4 dejó cambios que aplicar.
-2. `superpowers:writing-plans` → plan de la fase 5 (Aviso) → ejecutar con `superpowers:executing-plans`.
-3. Igual para 6 y 7.
+1. Confirmar si la revisión de las fases 4 y 5 dejó cambios que aplicar.
+2. `superpowers:writing-plans` → plan de la fase 6 (Barra de título) → ejecutar con
+   `superpowers:executing-plans`.
+3. Igual para la 7.
