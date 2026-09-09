@@ -163,7 +163,7 @@ fun ImagesScreen(
                 items(entries, key = { it.key() }) { entry ->
                     when (entry) {
                         Entry.PendingHeader ->
-                            PendingSectionHeader(pendingRows.size, onSearchChange)
+                            PendingSectionHeader(pendingRows.size, onAcknowledgeAll)
 
                         is Entry.PendingItem ->
                             if (entry.row.pendingUndo) {
@@ -414,10 +414,12 @@ private fun QueuedBanner(count: Int, onPromote: () -> Unit) {
 }
 
 @Composable
-private fun PendingSectionHeader(count: Int, onSearchChange: (String) -> Unit) {
+private fun PendingSectionHeader(count: Int, onAcknowledgeAll: () -> Unit) {
     val palette = statusColors(ImageStatus.PENDING, LocalIsDark.current)
     SectionHeader(palette.foreground, "Versión nueva", count) {
-        HeaderChip("Ver todas") { onSearchChange("") }
+        // Blueprint (mapa de acciones): «Aplica «Visto» a todas las filas de la sección en una
+        // sola escritura». Antes limpiaba el buscador, que no es lo que el chip promete.
+        HeaderChip("Ver todas", onClick = onAcknowledgeAll)
     }
 }
 
