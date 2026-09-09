@@ -6,15 +6,17 @@ Documento de continuidad para retomar en otra sesión. Se lee **antes** que los 
 - **Plan fases 1–3:** `docs/superpowers/plans/2026-09-08-imagewatch-rediseno-fases-1-3.md` (completado).
 - **Plan fase 4:** `docs/superpowers/plans/2026-09-08-imagewatch-rediseno-fase-4.md` (completado).
 - **Plan fase 5:** `docs/superpowers/plans/2026-09-09-imagewatch-rediseno-fase-5.md` (completado).
-- **Planes fases 6–7:** aún NO escritos. Se escriben al retomar, uno por fase, con el skill `superpowers:writing-plans`.
+- **Plan fase 6:** `docs/superpowers/plans/2026-09-09-imagewatch-rediseno-fase-6.md` (completado).
+- **Plan fase 7:** aún NO escrito. Se escribe al retomar, con el skill `superpowers:writing-plans`.
 - **Contrato de comportamiento:** `docs/superpowers/specs/2026-09-05-imagewatch-historias-de-usuario.md`, actualizado hasta H-97.
 
 ## Dónde estamos
 
-**5 de 7 fases hechas.** Cada fase es un PR / rama apilada sobre la anterior. **No hay remoto**: la
-revisión es de rama, no de PR de GitHub. La fase 5 se hizo directamente sobre
-`feature/rediseno-fase-5-aviso` y se fusionó (fast-forward) de vuelta a `feature/rediseno-fase-4-ajustes`
-al terminar; la rama de la fase 5 ya no existe.
+**6 de 7 fases hechas.** Cada fase es un PR / rama apilada sobre la anterior. **No hay remoto**: la
+revisión es de rama, no de PR de GitHub. Las fases 5 y 6 se hicieron cada una en su propia rama
+(`feature/rediseno-fase-5-aviso`, `feature/rediseno-fase-6-barra-titulo`) y se fusionaron
+(fast-forward) de vuelta a `feature/rediseno-fase-4-ajustes` al terminar; ninguna de esas dos ramas
+existe ya.
 
 | Fase | Rama | Estado |
 |---|---|---|
@@ -23,10 +25,20 @@ al terminar; la rama de la fase 5 ya no existe.
 | 3 Fila abierta + quitar undo/cola/rename | `feature/rediseno-fase-3-fila-abierta` | Hecha |
 | 4 Ajustes | `feature/rediseno-fase-4-ajustes` | Hecha; **el usuario la está revisando** |
 | 5 Aviso | fusionada en `feature/rediseno-fase-4-ajustes` | Hecha; **el usuario la está revisando** |
-| 6 Barra de título | `feature/rediseno-fase-6-barra-titulo` (sin crear) | Pendiente, sin plan |
+| 6 Barra de título | fusionada en `feature/rediseno-fase-4-ajustes` | Hecha; **el usuario la está revisando** |
 | 7 Teclado | `feature/rediseno-fase-7-teclado` (sin crear) | Pendiente, sin plan |
 
-**Rama actual:** `feature/rediseno-fase-4-ajustes` (tip `00e7aa1`, incluye la fase 5).
+**Rama actual:** `feature/rediseno-fase-4-ajustes` (tip `2f3d79f`, incluye las fases 5 y 6).
+
+## Puntos abiertos de la fase 6 (el usuario los está revisando)
+
+1. `BELL_HIT_WIDTH = 24.dp` es nombre propio de esta implementación (el spec solo daba el número);
+   la campana usa `IconSize.md` (16 dp), distinto a `IconSize.lg` (18 dp) de la campana de la
+   cabecera — intencional, así lo pide el spec para esta barra en concreto.
+2. El repaso visual (`:desktopApp:run`) confirmó arranque sin excepción con el hairline y la
+   campana nuevos, pero no se verificó a ojo el toggle bidireccional (barra ↔ cabecera) porque no
+   hay herramienta de captura para una ventana nativa de Compose Desktop en este entorno — queda
+   pendiente de un vistazo manual del usuario.
 
 ## Puntos abiertos de la fase 5 (el usuario los está revisando)
 
@@ -133,7 +145,7 @@ no envuelve literales de string largos ni firmas: hay que partirlas a mano.
 - `ToastLayer.onView` pasa a `onAction(name, kind)`; `Main.kt` lo mapea: `NUEVA/SALTADAS`→`acknowledge`,
   `ERROR`→`refreshNow(name)`, `RESUMEN`→ventana al frente + sección «Versión nueva».
 
-## Fase 6 — Barra de título (ver spec §11)
+## Fase 6 — Barra de título (hecha; ver spec §11 y los puntos abiertos arriba)
 
 **Ficheros:** `ui/components/TitleBar.kt` (`jvmMain`), `Main.kt`.
 
@@ -186,7 +198,6 @@ no envuelve literales de string largos ni firmas: hay que partirlas a mano.
 
 ## Qué pedir al retomar
 
-1. Confirmar si la revisión de las fases 4 y 5 dejó cambios que aplicar.
-2. `superpowers:writing-plans` → plan de la fase 6 (Barra de título) → ejecutar con
-   `superpowers:executing-plans`.
-3. Igual para la 7.
+1. Confirmar si la revisión de las fases 4, 5 y 6 dejó cambios que aplicar.
+2. `superpowers:writing-plans` → plan de la fase 7 (Teclado) → ejecutar con
+   `superpowers:executing-plans`. Es la última fase.
