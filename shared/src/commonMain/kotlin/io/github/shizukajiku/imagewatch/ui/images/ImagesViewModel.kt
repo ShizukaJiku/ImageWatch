@@ -120,9 +120,10 @@ data class ImagesUiState(
  * [lastSuccessLabel]: se puede probar con un reloj fijo sin montar Compose.
  */
 internal fun relativeAge(at: Instant, now: Instant): String {
-    val minutes = (now - at).inWholeMinutes
+    val seconds = (now - at).inWholeSeconds
+    val minutes = seconds / 60
     return when {
-        minutes < 1 -> "hace unos segundos"
+        seconds < 60 -> "hace $seconds s"
         minutes < 60 -> "hace $minutes min"
         minutes < 24 * 60 -> "hace ${minutes / 60} h"
         else -> "hace ${minutes / (24 * 60)} d"
