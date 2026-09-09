@@ -270,8 +270,8 @@ fun SettingsScreen(
 
         Confirm.WIPE -> ConfirmDialog(
             title = "Borrar datos locales",
-            body = "Se borra todo lo que la app guarda en este equipo. Las imágenes seguirán en el registry; " +
-                "la lista de vigilancia no.",
+            body = "Se borra todo lo que la app guarda en este equipo y la aplicación se cierra. Las imágenes " +
+                "seguirán en el registry; la lista de vigilancia no. Vuelve a abrirla para empezar de cero.",
             lost = listOf(
                 "$watchedCount imágenes vigiladas",
                 "La versión vista de cada una",
