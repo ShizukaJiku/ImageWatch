@@ -249,6 +249,35 @@ class VersionPollingServiceTest {
     }
 
     @Test
+    fun unaImagenQuePasaAErrorDisparaNotifyFailuresUnaVez() = runTest {
+        val state = FakeImageStateStore()
+        state.seed("alpha", "registry.local/alpha:1.0.0")
+        val source = FakeImageSource(mutableMapOf("alpha" to "registry.local/alpha:1.0.0"))
+        val notifications = RecordingNotificationPort()
+        val service = service(source, state, listOf(notifications), listOf("alpha"))
+
+        service.poll() // línea base: alpha al día, sin transición todavía
+        source.failOn("alpha", "HTTP 503")
+        service.poll() // alpha pasa a ERROR
+
+        assertEquals(listOf("alpha"), notifications.receivedFailures.map { it.name })
+    }
+
+    @Test
+    fun unaImagenQueYaFallabaNoVuelveADispararNotifyFailures() = runTest {
+        val source = FakeImageSource(mutableMapOf())
+        source.failOn("alpha", "HTTP 503")
+        val notifications = RecordingNotificationPort()
+        val service = service(source, FakeImageStateStore(), listOf(notifications), listOf("alpha"))
+
+        service.poll() // alpha ya arranca en ERROR: no hay "antes" que valga
+        notifications.receivedFailures.clear()
+        service.poll() // sigue en ERROR: no es una transición nueva
+
+        assertTrue(notifications.receivedFailures.isEmpty())
+    }
+
+    @Test
     fun aPendingImageStaysPendingAcrossPolls() = runTest {
         val state = FakeImageStateStore()
         state.seed("alpha", "registry.local/alpha:1.0.0")
@@ -508,9 +537,14 @@ class VersionPollingServiceTest {
 
     private class RecordingNotificationPort : NotificationPort {
         val received = mutableListOf<ImageState>()
+        val receivedFailures = mutableListOf<ImageState>()
 
         override fun notifyUpdates(updates: List<ImageState>) {
             received.addAll(updates)
+        }
+
+        override fun notifyFailures(failures: List<ImageState>) {
+            receivedFailures.addAll(failures)
         }
     }
 
