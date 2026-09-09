@@ -1,22 +1,22 @@
-# Estado del rediseño de la interfaz — pausa el 2026-09-08
+# Estado del rediseño de la interfaz — completado el 2026-09-09
 
-Documento de continuidad para retomar en otra sesión. Se lee **antes** que los planes.
+Documento de continuidad. Las 7 fases están hechas; queda la revisión final del usuario sobre
+`feature/rediseno-fase-4-ajustes`, que las acumula todas.
 
 - **Spec:** `docs/superpowers/specs/2026-09-08-imagewatch-rediseno-design.md` (7 fases, decisiones D-1..D-7).
 - **Plan fases 1–3:** `docs/superpowers/plans/2026-09-08-imagewatch-rediseno-fases-1-3.md` (completado).
 - **Plan fase 4:** `docs/superpowers/plans/2026-09-08-imagewatch-rediseno-fase-4.md` (completado).
 - **Plan fase 5:** `docs/superpowers/plans/2026-09-09-imagewatch-rediseno-fase-5.md` (completado).
 - **Plan fase 6:** `docs/superpowers/plans/2026-09-09-imagewatch-rediseno-fase-6.md` (completado).
-- **Plan fase 7:** aún NO escrito. Se escribe al retomar, con el skill `superpowers:writing-plans`.
-- **Contrato de comportamiento:** `docs/superpowers/specs/2026-09-05-imagewatch-historias-de-usuario.md`, actualizado hasta H-97.
+- **Plan fase 7:** `docs/superpowers/plans/2026-09-09-imagewatch-rediseno-fase-7.md` (completado). Última fase.
+- **Contrato de comportamiento:** `docs/superpowers/specs/2026-09-05-imagewatch-historias-de-usuario.md`, actualizado hasta H-98.
 
 ## Dónde estamos
 
-**6 de 7 fases hechas.** Cada fase es un PR / rama apilada sobre la anterior. **No hay remoto**: la
-revisión es de rama, no de PR de GitHub. Las fases 5 y 6 se hicieron cada una en su propia rama
-(`feature/rediseno-fase-5-aviso`, `feature/rediseno-fase-6-barra-titulo`) y se fusionaron
-(fast-forward) de vuelta a `feature/rediseno-fase-4-ajustes` al terminar; ninguna de esas dos ramas
-existe ya.
+**7 de 7 fases hechas — el rediseño está completo.** Cada fase fue un PR / rama apilada sobre la
+anterior. **No hay remoto**: la revisión es de rama, no de PR de GitHub. Las fases 5, 6 y 7 se
+hicieron cada una en su propia rama y se fusionaron (fast-forward) de vuelta a
+`feature/rediseno-fase-4-ajustes` al terminar; ninguna de esas tres ramas existe ya.
 
 | Fase | Rama | Estado |
 |---|---|---|
@@ -26,9 +26,34 @@ existe ya.
 | 4 Ajustes | `feature/rediseno-fase-4-ajustes` | Hecha; **el usuario la está revisando** |
 | 5 Aviso | fusionada en `feature/rediseno-fase-4-ajustes` | Hecha; **el usuario la está revisando** |
 | 6 Barra de título | fusionada en `feature/rediseno-fase-4-ajustes` | Hecha; **el usuario la está revisando** |
-| 7 Teclado | `feature/rediseno-fase-7-teclado` (sin crear) | Pendiente, sin plan |
+| 7 Teclado | fusionada en `feature/rediseno-fase-4-ajustes` | Hecha; **el usuario la está revisando** |
 
-**Rama actual:** `feature/rediseno-fase-4-ajustes` (tip `2f3d79f`, incluye las fases 5 y 6).
+**Rama actual:** `feature/rediseno-fase-4-ajustes` (tip `bc03c40`, incluye las fases 5, 6 y 7 —
+todo el rediseño).
+
+## Puntos abiertos de la fase 7 (el usuario los está revisando)
+
+1. Alcance de `focusRing()` deliberadamente recortado: los `IconButton` sueltos de la cabecera
+   (refrescar, ajustes, buscador, agregar, campana de la cabecera) y los `BasicTextField` de
+   Ajustes/buscador no lo llevan — ya son foco real por `Tab` y el spec no los nombra
+   explícitamente. Solo llevan el anillo los controles que el spec sí nombra (chips de cabecera,
+   botones del pie de Ajustes, toggles, botones del diálogo) más la fila entera y sus dos acciones
+   (chip + kebab).
+2. `CheckingRow` (fila con una comprobación individual en vuelo) no participa en la navegación por
+   teclado: no recibe foco ni anillo mientras dura la comprobación (unos segundos).
+3. `Espacio` sobre una fila **no pendiente** (Error/Al día) no está interceptado a propósito —
+   cae hacia el `clickable` de `RowCard` sin forzar ningún comportamiento adicional; el contrato
+   del spec solo define Espacio para «Versión nueva».
+4. `↑`/`↓` mueven el foco vía `LocalFocusManager.moveFocus`, que solo encuentra objetivos ya
+   compuestos por la `LazyColumn` — en listas muy largas con saltos grandes fuera del margen de
+   composición perezosa, una fila muy lejana no es alcanzable hasta que se compone. No es el caso
+   de uso principal de esta app.
+5. El repaso visual (`:desktopApp:run`) confirmó arranque sin excepción con toda la navegación
+   nueva, pero no se pudo recorrer a ojo la lista de comprobación manual del spec §12 (flechas,
+   Espacio, Enter, Escape, Tab, anillo visible) porque no hay herramienta de captura/automatización
+   para una ventana nativa de Compose Desktop en este entorno — queda pendiente de un repaso manual
+   del usuario, con la lista completa en
+   `docs/superpowers/plans/2026-09-09-imagewatch-rediseno-fase-7.md` (Task 5, Step 4).
 
 ## Puntos abiertos de la fase 6 (el usuario los está revisando)
 
@@ -157,18 +182,21 @@ no envuelve literales de string largos ni firmas: hay que partirlas a mano.
   (= `{ wiring.applyConfig(config.copy(mutedAll = !config.mutedAll)) }`) por `MainScreen` a `TitleBar`.
 - Sin test de UI; repaso visual.
 
-## Fase 7 — Teclado (ver spec §12)
+## Fase 7 — Teclado (hecha; ver spec §12 y los puntos abiertos arriba)
 
-**Ficheros:** `ui/theme/` (helper `focusRing`), `ImagesScreen.kt` + `ImageRow.kt`, `SettingsScreen.kt`,
-`ui/dialogs/`.
+**Ficheros:** `ui/theme/FocusRing.kt` (nuevo), `ImagesScreen.kt` + `ImageRow.kt`,
+`SettingsScreen.kt`, `ui/dialogs/ConfirmDialog.kt`.
 
 - `Modifier.focusRing()`: contorno 2 dp `primary`, offset 2, **por fuera** del borde (no cambia
-  tamaño). Se aplica con `interactionSource` de foco.
-- Lista: `↑/↓` mueven foco entre filas, `Espacio` = Visto (solo pendientes), `Enter` = `toggleExpand`,
-  `Escape` = colapsa `expandedRow`, `Tab` entra en las acciones de la fila.
-- Foco visible en todos los controles de Bandeja, Ajustes y diálogos. **No** el `ToastLayer`
-  (`focusable = false` por diseño).
-- Añadir H-98 (o el número que toque) de navegación por teclado a las historias.
+  tamaño), dibujado con `drawWithContent` — no añade un segundo objetivo de foco.
+- Lista: `↑/↓` mueven foco entre filas (`LocalFocusManager.moveFocus`), `Espacio` = Visto (solo
+  pendientes), `Enter` = `toggleExpand`, `Escape` = colapsa `expandedRow`. Todo interceptado en un
+  único `Modifier.onPreviewKeyEvent` en el `LazyColumn`. `Tab` entra en las acciones de la fila
+  gratis: la fila, el chip y el kebab ya eran focos reales por `clickable`/`IconButton`.
+- Anillo aplicado a: la fila entera, `ActionChip`, el kebab, `HeaderChip`, `OkSectionHeader`, el
+  «Reintentar ahora» del aviso contextual, `FootPill`, el `Switch` de `Toggle`, `Segmented`, el
+  botón de volver de Ajustes, y los dos botones de `ConfirmDialog`.
+- H-98 añadida a `historias-de-usuario.md`.
 
 ## Puntos abiertos de la fase 4 (el usuario los está revisando)
 
@@ -198,6 +226,12 @@ no envuelve literales de string largos ni firmas: hay que partirlas a mano.
 
 ## Qué pedir al retomar
 
-1. Confirmar si la revisión de las fases 4, 5 y 6 dejó cambios que aplicar.
-2. `superpowers:writing-plans` → plan de la fase 7 (Teclado) → ejecutar con
-   `superpowers:executing-plans`. Es la última fase.
+El rediseño está completo. Al retomar, lo único que queda es:
+
+1. Confirmar si la revisión de las fases 4, 5, 6 y 7 dejó cambios que aplicar — repasar los
+   «Puntos abiertos» de cada fase, arriba.
+2. Recorrer a ojo la lista de comprobación manual de la fase 7 (spec §12): flechas, Espacio, Enter,
+   Escape, Tab, anillo visible en cabecera/Ajustes/diálogo.
+3. Decidir qué hacer con `feature/rediseno-fase-4-ajustes` (las 7 fases juntas): sin remoto en este
+   repo, la opción natural es fusionarla a `main` cuando el usuario dé el visto bueno — no se ha
+   hecho todavía, a la espera de esa revisión.
