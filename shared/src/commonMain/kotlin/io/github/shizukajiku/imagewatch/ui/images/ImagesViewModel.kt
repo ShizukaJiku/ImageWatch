@@ -123,6 +123,8 @@ data class ImagesUiState(
      * en la linea plegada de esa seccion. Nulo cuando no hay rastro que enseñar.
      */
     val trace: String? = null,
+    /** Nombre de la fila desplegada en su sitio, o nulo si ninguna lo esta. Un solo dueño a la vez. */
+    val expandedRow: String? = null,
 )
 
 /**
@@ -309,6 +311,15 @@ class ImagesViewModel(
 
     fun onSearchChange(text: String) {
         recompute { it.copy(search = text) }
+    }
+
+    /**
+     * Despliega o pliega el detalle de una fila en su sitio (Blueprint «Fila (clic)»). Estado
+     * puro: no toca el snapshot ni arranca temporizadores. Un solo dueño -abrir una cierra la
+     * anterior-, por eso se compara con el nombre en vez de togglear un booleano por fila.
+     */
+    fun toggleExpand(name: String) {
+        mutableState.update { it.copy(expandedRow = if (it.expandedRow == name) null else name) }
     }
 
     /** Consulta ya una imagen, o todas si [name] es nulo, sin esperar al siguiente ciclo. */

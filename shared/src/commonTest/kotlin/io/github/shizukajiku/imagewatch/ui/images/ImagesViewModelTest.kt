@@ -713,12 +713,13 @@ class ImagesViewModelTest {
         val fixture = fixture(listOf("alpha", "beta"))
         fixture.service.poll()
 
-        fixture.viewModel.refreshNow("alpha")
-        // El controlador ya encolo la consulta real en su propio hilo; se cierra aqui para que
-        // esta prueba no compita con el por el `FakeImageStateStore`, que no es thread-safe. Lo
-        // que se comprueba es el estado que publica el view model, no el sondeo en si -eso ya lo
-        // cubre PollingControllerTest-.
+        // El controlador consume en su propio hilo (`Dispatchers.Default`): se cierra ANTES de
+        // `refreshNow` para que la consulta real nunca se encole y no compita contra estas
+        // aserciones ni contra el `FakeImageStateStore`, que no es thread-safe. Lo que se
+        // comprueba es el estado que publica el view model -que `refreshNow` marca la fila y que
+        // un snapshot lo limpia-, no el sondeo en sí, que ya cubre `PollingControllerTest`.
         fixture.controller.close()
+        fixture.viewModel.refreshNow("alpha")
 
         val antes = fixture.viewModel.state.value.rows.associateBy { it.name }
         assertTrue(antes.getValue("alpha").checking)
@@ -727,6 +728,29 @@ class ImagesViewModelTest {
         fixture.service.poll()
 
         assertTrue(!fixture.viewModel.state.value.rows.first { it.name == "alpha" }.checking)
+    }
+
+    @Test
+    fun `abrir una fila fija expandedRow y volver a pulsarla lo limpia`() = runTest {
+        val fixture = fixture(listOf("alpha"))
+        fixture.service.poll()
+
+        fixture.viewModel.toggleExpand("alpha")
+        assertEquals("alpha", fixture.viewModel.state.value.expandedRow)
+
+        fixture.viewModel.toggleExpand("alpha")
+        assertNull(fixture.viewModel.state.value.expandedRow)
+    }
+
+    @Test
+    fun `abrir otra fila cierra la anterior`() = runTest {
+        val fixture = fixture(listOf("alpha", "beta"))
+        fixture.service.poll()
+
+        fixture.viewModel.toggleExpand("alpha")
+        fixture.viewModel.toggleExpand("beta")
+
+        assertEquals("beta", fixture.viewModel.state.value.expandedRow)
     }
 
     // --- andamiaje ---
