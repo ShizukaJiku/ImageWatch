@@ -2,7 +2,10 @@ package io.github.shizukajiku.imagewatch.ui.images
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -52,6 +55,7 @@ import io.github.shizukajiku.imagewatch.ui.components.SvgIcon
 import io.github.shizukajiku.imagewatch.ui.theme.IconSize
 import io.github.shizukajiku.imagewatch.ui.theme.Layout
 import io.github.shizukajiku.imagewatch.ui.theme.LocalIsDark
+import io.github.shizukajiku.imagewatch.ui.theme.Motion
 import io.github.shizukajiku.imagewatch.ui.theme.Radius
 import io.github.shizukajiku.imagewatch.ui.theme.Space
 import io.github.shizukajiku.imagewatch.ui.theme.TabularNums
@@ -168,13 +172,20 @@ fun ImagesScreen(
                 verticalArrangement = Arrangement.spacedBy(Space.sm),
             ) {
                 items(entries, key = { it.key() }) { entry ->
+                    // Entrada, salida y reordenación de fila con la curva de énfasis (Blueprint 06:
+                    // «400 ms con énfasis»), en vez del spec por defecto de `animateItem`.
+                    val itemMotion = Modifier.animateItem(
+                        fadeInSpec = tween(Motion.EMPHASIS),
+                        fadeOutSpec = tween(Motion.EMPHASIS),
+                        placementSpec = tween(Motion.EMPHASIS, easing = Motion.emphasisEasing),
+                    )
                     when (entry) {
                         Entry.PendingHeader ->
                             PendingSectionHeader(pendingRows.size, onAcknowledgeAll)
 
                         is Entry.PendingItem ->
                             if (entry.row.pendingUndo) {
-                                UndoRow(entry.row.name, { onUndoAcknowledge(entry.row.name) }, Modifier.animateItem())
+                                UndoRow(entry.row.name, { onUndoAcknowledge(entry.row.name) }, itemMotion)
                             } else {
                                 PendingRow(
                                     row = entry.row,
@@ -183,7 +194,7 @@ fun ImagesScreen(
                                     onEdit = { onEdit(entry.row.name) },
                                     onToggleSilence = { onToggleSilence(entry.row.name) },
                                     onDelete = { onDelete(entry.row.name) },
-                                    modifier = Modifier.animateItem(),
+                                    modifier = itemMotion,
                                 )
                             }
 
@@ -197,7 +208,7 @@ fun ImagesScreen(
                                 onEdit = { onEdit(entry.row.name) },
                                 onToggleSilence = { onToggleSilence(entry.row.name) },
                                 onDelete = { onDelete(entry.row.name) },
-                                modifier = Modifier.animateItem(),
+                                modifier = itemMotion,
                             )
 
                         is Entry.OkHeader ->
@@ -227,7 +238,7 @@ fun ImagesScreen(
                                 onEdit = { onEdit(entry.row.name) },
                                 onToggleSilence = { onToggleSilence(entry.row.name) },
                                 onDelete = { onDelete(entry.row.name) },
-                                modifier = Modifier.animateItem(),
+                                modifier = itemMotion,
                             )
                         }
                     }
@@ -355,7 +366,13 @@ private fun NoticeBanner(state: ImagesUiState, onRetry: () -> Unit) {
     val disconnected = state.allFailing
     val nadaQueAtender = !disconnected && state.pending == 0 && state.errorCount == 0 && state.queuedCount == 0
 
-    AnimatedVisibility(disconnected || nadaQueAtender, enter = expandVertically(), exit = shrinkVertically()) {
+    AnimatedVisibility(
+        disconnected || nadaQueAtender,
+        enter = expandVertically(tween(Motion.EMPHASIS, easing = Motion.emphasisEasing)) +
+            fadeIn(tween(Motion.EMPHASIS)),
+        exit = shrinkVertically(tween(Motion.EMPHASIS, easing = Motion.emphasisEasing)) +
+            fadeOut(tween(Motion.EMPHASIS)),
+    ) {
         val palette = statusColors(if (disconnected) ImageStatus.ERROR else ImageStatus.OK, dark)
         Box(Modifier.padding(start = Space.xl, top = Space.sm, end = Space.xl)) {
             Surface(
