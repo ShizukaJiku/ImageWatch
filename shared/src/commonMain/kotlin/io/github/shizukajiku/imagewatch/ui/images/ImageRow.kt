@@ -1,6 +1,6 @@
 package io.github.shizukajiku.imagewatch.ui.images
 
-import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -11,15 +11,14 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.TooltipArea
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -52,7 +51,6 @@ import androidx.compose.ui.unit.dp
 import io.github.shizukajiku.imagewatch.domain.ImageStatus
 import io.github.shizukajiku.imagewatch.ui.components.AppSvg
 import io.github.shizukajiku.imagewatch.ui.components.SvgIcon
-import io.github.shizukajiku.imagewatch.ui.theme.Dwell
 import io.github.shizukajiku.imagewatch.ui.theme.IconSize
 import io.github.shizukajiku.imagewatch.ui.theme.Layout
 import io.github.shizukajiku.imagewatch.ui.theme.LocalIsDark
@@ -61,9 +59,10 @@ import io.github.shizukajiku.imagewatch.ui.theme.Radius
 import io.github.shizukajiku.imagewatch.ui.theme.Space
 import io.github.shizukajiku.imagewatch.ui.theme.TabularNums
 import io.github.shizukajiku.imagewatch.ui.theme.TypeScale
-import io.github.shizukajiku.imagewatch.ui.theme.ghostBackground
 import io.github.shizukajiku.imagewatch.ui.theme.mutedText
 import io.github.shizukajiku.imagewatch.ui.theme.statusColors
+import kotlinx.coroutines.delay
+import kotlin.time.Clock
 
 /** Techo del latido de una fila UNKNOWN mientras se comprueba: cuanto se apaga en el punto mas bajo. */
 private const val PULSE_MIN_ALPHA = 0.45f
@@ -71,30 +70,49 @@ private const val PULSE_MIN_ALPHA = 0.45f
 /** Opacidad de una fila con una comprobacion individual en vuelo. */
 private const val CHECKING_ALPHA = 0.45f
 
+/** Cuanto se enseña «Copiado» en la pildora tras copiar la referencia. */
+private const val COPIED_MILLIS = 2000L
+
 /**
  * La tarjeta compartida por las tres secciones: mismo borde, mismo relleno, misma rejilla de
  * columnas. Lo que cambia entre «Versión nueva», «No se pudo verificar» y «Al día» es el
  * contenido de cada celda, no la forma de la tarjeta.
+ *
+ * Un clic en la banda superior -en cualquier punto que no sea un control- despliega [detail] en
+ * su sitio, animando el alto con la curva de énfasis (Blueprint «Fila (clic)»).
  */
 @Composable
 private fun RowCard(
     background: Color,
     borderColor: Color,
     modifier: Modifier = Modifier,
+    expanded: Boolean = false,
+    onToggleExpand: (() -> Unit)? = null,
+    detail: (@Composable () -> Unit)? = null,
     content: @Composable RowScope.() -> Unit,
 ) {
     Surface(
         color = background,
         border = BorderStroke(1.dp, borderColor),
         shape = RoundedCornerShape(Radius.md),
-        modifier = modifier.fillMaxWidth(),
+        modifier = modifier
+            .fillMaxWidth()
+            .animateContentSize(tween(Motion.EMPHASIS, easing = Motion.emphasisEasing)),
     ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(Space.md),
-            modifier = Modifier.padding(horizontal = Layout.rowPadH, vertical = Layout.rowPadV),
-            content = content,
-        )
+        Column {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(Space.md),
+                modifier = Modifier
+                    .then(if (onToggleExpand != null) Modifier.clickable(onClick = onToggleExpand) else Modifier)
+                    .padding(horizontal = Layout.rowPadH, vertical = Layout.rowPadV),
+                content = content,
+            )
+            if (expanded && detail != null) {
+                HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant)
+                detail()
+            }
+        }
     }
 }
 
@@ -205,15 +223,106 @@ private fun ActionChip(text: String, background: Color, foreground: Color, onCli
 }
 
 /**
- * Fila de «Versión nueva»: la píldora enseña la versión remota y el chip pide «Visto», que no
- * reconoce al momento -abre la ventana de Deshacer, ver [UndoRow]-.
+ * El detalle que se despliega bajo la fila (Blueprint D2): los cuatro datos que la app tiene de
+ * verdad -nombre, origen, última versión, cuándo se detectó- y las cuatro acciones que son la
+ * razón de ser de la fila abierta. «Copiar referencia» copia solo el origen y lo dice cambiando
+ * su etiqueta a «Copiado» durante dos segundos, sin aviso.
+ */
+@Composable
+private fun RowDetail(row: ImageRowState, onRefresh: () -> Unit, onToggleSilence: () -> Unit, onDelete: () -> Unit) {
+    val clipboard = LocalClipboardManager.current
+    var copiedAt by remember { mutableStateOf(0L) }
+    val copied = copiedAt > 0L
+    LaunchedEffect(copiedAt) {
+        if (copiedAt > 0L) {
+            delay(COPIED_MILLIS)
+            copiedAt = 0L
+        }
+    }
+    Column(Modifier.padding(Layout.rowPadH)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(Space.xl)) {
+            DetailField("Nombre", row.name)
+            DetailField("Origen", row.registry)
+            DetailField("Última versión", if (row.remote != "—") row.remote else row.local)
+            DetailField("Detectada", row.detail)
+        }
+        Row(
+            Modifier.fillMaxWidth().padding(top = Space.md),
+            horizontalArrangement = Arrangement.spacedBy(Space.sm),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            DetailPill("Comprobar ahora", onRefresh)
+            DetailPill(if (copied) "Copiado" else "Copiar referencia") {
+                clipboard.setText(AnnotatedString(row.registry))
+                copiedAt = Clock.System.now().toEpochMilliseconds()
+            }
+            DetailPill(if (row.muted) "Reactivar avisos" else "Silenciar avisos", onToggleSilence)
+            Spacer(Modifier.weight(1f))
+            Surface(
+                color = MaterialTheme.colorScheme.errorContainer,
+                shape = RoundedCornerShape(Radius.pill),
+                onClick = onDelete,
+            ) {
+                Row(
+                    Modifier.padding(horizontal = Space.md, vertical = Space.xs + 2.dp),
+                    horizontalArrangement = Arrangement.spacedBy(Space.xs),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    SvgIcon(AppSvg.TRASH, MaterialTheme.colorScheme.onErrorContainer, Modifier.size(IconSize.sm))
+                    Text(
+                        "Quitar de la lista",
+                        color = MaterialTheme.colorScheme.onErrorContainer,
+                        fontSize = TypeScale.meta,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun RowScope.DetailField(label: String, value: String) {
+    Column(Modifier.weight(1f)) {
+        Text(label.uppercase(), fontSize = TypeScale.caption, color = mutedText(LocalIsDark.current))
+        Text(
+            value,
+            fontSize = TypeScale.meta,
+            color = MaterialTheme.colorScheme.onSurface,
+            style = TabularNums,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
+@Composable
+private fun DetailPill(text: String, onClick: () -> Unit) {
+    Surface(
+        color = MaterialTheme.colorScheme.surfaceVariant,
+        shape = RoundedCornerShape(Radius.pill),
+        onClick = onClick,
+    ) {
+        Text(
+            text,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            fontSize = TypeScale.meta,
+            modifier = Modifier.padding(horizontal = Space.md, vertical = Space.xs + 2.dp),
+        )
+    }
+}
+
+/**
+ * Fila de «Versión nueva»: la píldora enseña la versión remota y el chip pide «Visto», que
+ * reconoce al momento -sin ventana de deshacer (D1)-.
  */
 @Composable
 fun PendingRow(
     row: ImageRowState,
+    expanded: Boolean,
+    onToggleExpand: () -> Unit,
     onAcknowledge: () -> Unit,
     onRefresh: () -> Unit,
-    onEdit: () -> Unit,
     onToggleSilence: () -> Unit,
     onDelete: () -> Unit,
     modifier: Modifier = Modifier,
@@ -228,6 +337,9 @@ fun PendingRow(
         background = MaterialTheme.colorScheme.surface,
         borderColor = palette.background,
         modifier = modifier.then(emphasisModifier(row)),
+        expanded = expanded,
+        onToggleExpand = onToggleExpand,
+        detail = { RowDetail(row, onRefresh, onToggleSilence, onDelete) },
     ) {
         NameCell(row.name, row.registry, MaterialTheme.colorScheme.onSurface)
         AgeCell(row.age, "pendiente", palette.foreground)
@@ -245,7 +357,7 @@ fun PendingRow(
                     onAcknowledge,
                 )
             },
-            menu = { RowMenu(row, onAcknowledge, onRefresh, onEdit, onToggleSilence, onDelete) },
+            menu = { RowMenu(row, onAcknowledge, onRefresh, onToggleSilence, onDelete) },
         )
     }
 }
@@ -255,8 +367,9 @@ fun PendingRow(
 @Composable
 fun ErrorRow(
     row: ImageRowState,
+    expanded: Boolean,
+    onToggleExpand: () -> Unit,
     onRefresh: () -> Unit,
-    onEdit: () -> Unit,
     onToggleSilence: () -> Unit,
     onDelete: () -> Unit,
     modifier: Modifier = Modifier,
@@ -272,6 +385,9 @@ fun ErrorRow(
             background = MaterialTheme.colorScheme.surface,
             borderColor = palette.background,
             modifier = modifier.then(emphasisModifier(row)),
+            expanded = expanded,
+            onToggleExpand = onToggleExpand,
+            detail = { RowDetail(row, onRefresh, onToggleSilence, onDelete) },
         ) {
             NameCell(row.name, row.registry, palette.foreground)
             AgeCell(row.age, "falla", palette.foreground)
@@ -285,7 +401,7 @@ fun ErrorRow(
                         onRefresh,
                     )
                 },
-                menu = { RowMenu(row, onAcknowledge = null, onRefresh, onEdit, onToggleSilence, onDelete) },
+                menu = { RowMenu(row, onAcknowledge = null, onRefresh, onToggleSilence, onDelete) },
             )
         }
     }
@@ -315,9 +431,9 @@ fun OkRow(
     pillBackground: Color,
     pillForeground: Color,
     verifying: Boolean,
-    onAcknowledge: (() -> Unit)?,
+    expanded: Boolean,
+    onToggleExpand: () -> Unit,
     onRefresh: () -> Unit,
-    onEdit: () -> Unit,
     onToggleSilence: () -> Unit,
     onDelete: () -> Unit,
     modifier: Modifier = Modifier,
@@ -332,6 +448,9 @@ fun OkRow(
         background = MaterialTheme.colorScheme.surface,
         borderColor = MaterialTheme.colorScheme.surfaceVariant,
         modifier = modifier.alpha(alpha).then(emphasisModifier(row)),
+        expanded = expanded,
+        onToggleExpand = onToggleExpand,
+        detail = { RowDetail(row, onRefresh, onToggleSilence, onDelete) },
     ) {
         NameCell(row.name, row.registry, MaterialTheme.colorScheme.onSurface)
         AgeCell(row.age.ifEmpty { "—" }, ageCaption, MaterialTheme.colorScheme.onSurfaceVariant)
@@ -348,7 +467,7 @@ fun OkRow(
                     }
                 }
             },
-            menu = { RowMenu(row, onAcknowledge, onRefresh, onEdit, onToggleSilence, onDelete) },
+            menu = { RowMenu(row, onAcknowledge = null, onRefresh, onToggleSilence, onDelete) },
         )
     }
 }
@@ -403,82 +522,17 @@ private fun CheckingRow(row: ImageRowState, modifier: Modifier = Modifier) {
     }
 }
 
-/**
- * Línea de «Deshacer»: sustituye a la fila durante [Dwell.UNDO_MILLIS] tras pedir «Visto». La
- * barra anima el mismo tiempo que corre el temporizador real del view model -ambas leen
- * `Dwell.UNDO_MILLIS`-, así que no hay dos duraciones que mantener sincronizadas a mano.
- */
-@Composable
-fun UndoRow(name: String, onUndo: () -> Unit, modifier: Modifier = Modifier) {
-    val dark = LocalIsDark.current
-    val progress = remember(name) { Animatable(1f) }
-    LaunchedEffect(name) {
-        progress.animateTo(0f, tween(Dwell.UNDO_MILLIS.toInt(), easing = LinearEasing))
-    }
-    Surface(
-        color = ghostBackground(dark),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.surfaceVariant),
-        shape = RoundedCornerShape(Radius.md),
-        modifier = modifier.fillMaxWidth(),
-    ) {
-        Column {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(Space.md),
-                modifier = Modifier.padding(horizontal = Layout.rowPadH).height(41.dp),
-            ) {
-                SvgIcon(AppSvg.CHECK, statusColors(ImageStatus.OK, dark).foreground, Modifier.size(IconSize.sm))
-                Text(
-                    "Marcada como vista",
-                    fontSize = TypeScale.meta,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Text(
-                    name,
-                    fontSize = TypeScale.meta,
-                    color = mutedText(dark),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Spacer(Modifier.weight(1f))
-                Surface(
-                    color = MaterialTheme.colorScheme.primaryContainer,
-                    shape = RoundedCornerShape(Radius.pill),
-                    onClick = onUndo,
-                ) {
-                    Text(
-                        "Deshacer",
-                        color = MaterialTheme.colorScheme.onPrimaryContainer,
-                        fontWeight = FontWeight.SemiBold,
-                        fontSize = TypeScale.meta,
-                        modifier = Modifier.padding(horizontal = Space.md, vertical = Space.xs + 1.dp),
-                    )
-                }
-            }
-            Box(Modifier.fillMaxWidth().height(3.dp).background(MaterialTheme.colorScheme.surfaceVariant)) {
-                Box(
-                    Modifier.fillMaxHeight()
-                        .fillMaxWidth(progress.value.coerceIn(0f, 1f))
-                        .background(MaterialTheme.colorScheme.primary),
-                )
-            }
-        }
-    }
-}
-
 /** Menú de acciones de una fila: lo mismo para las tres secciones, solo cambia si «Visto» aplica. */
 @Composable
 private fun RowMenu(
     row: ImageRowState,
     onAcknowledge: (() -> Unit)?,
     onRefresh: () -> Unit,
-    onEdit: () -> Unit,
     onToggleSilence: () -> Unit,
     onDelete: () -> Unit,
 ) {
     var expanded by remember { mutableStateOf(false) }
     val clipboard = LocalClipboardManager.current
-    val reference = "${row.registry}:${if (row.remote != "—") row.remote else row.local}"
 
     Box {
         IconButton({ expanded = true }, modifier = Modifier.size(Layout.rowKebab)) {
@@ -514,17 +568,8 @@ private fun RowMenu(
                 },
                 onClick = {
                     expanded = false
-                    clipboard.setText(AnnotatedString(reference))
-                },
-            )
-            DropdownMenuItem(
-                text = { Text("Renombrar") },
-                leadingIcon = {
-                    SvgIcon(AppSvg.PENCIL, MaterialTheme.colorScheme.onSurfaceVariant, Modifier.size(IconSize.sm))
-                },
-                onClick = {
-                    expanded = false
-                    onEdit()
+                    // Blueprint: copia solo el origen, no `origen:versión`.
+                    clipboard.setText(AnnotatedString(row.registry))
                 },
             )
             DropdownMenuItem(
