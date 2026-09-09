@@ -26,20 +26,13 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.dp
 import io.github.shizukajiku.imagewatch.config.ThemePreference
 import io.github.shizukajiku.imagewatch.ui.components.AppSvg
 import io.github.shizukajiku.imagewatch.ui.components.SvgIcon
 import io.github.shizukajiku.imagewatch.ui.theme.IconSize
+import io.github.shizukajiku.imagewatch.ui.theme.Layout
 import io.github.shizukajiku.imagewatch.ui.theme.Space
 import io.github.shizukajiku.imagewatch.ui.theme.TypeScale
-
-// Ancho fijo de los campos numericos (intervalo, duracion del toast): no es un paso de Space,
-// es el ancho que hace falta para que quepa el numero mas largo sin recortarse.
-private val FIELD_WIDTH = 220.dp
-
-// Ancho fijo del slider de volumen; misma razon que FIELD_WIDTH.
-private val SLIDER_WIDTH = 260.dp
 
 @Composable
 fun SettingsScreen(
@@ -97,7 +90,7 @@ fun SettingsScreen(
                 onValueChange = onIntervalChange,
                 label = { Text("Intervalo de sondeo (s)") },
                 singleLine = true,
-                modifier = Modifier.width(FIELD_WIDTH),
+                modifier = Modifier.width(Layout.settingsField),
             )
             Row(
                 verticalAlignment = Alignment.CenterVertically,
@@ -142,7 +135,7 @@ fun SettingsScreen(
                 label = { Text("Duración del toast (s)") },
                 singleLine = true,
                 enabled = state.toastsEnabled,
-                modifier = Modifier.width(FIELD_WIDTH),
+                modifier = Modifier.width(Layout.settingsField),
             )
             Toggle("Sonidos", state.soundsEnabled, onSoundsChange)
             Text("Volumen", fontSize = TypeScale.meta, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -150,7 +143,7 @@ fun SettingsScreen(
                 value = state.soundVolume,
                 onValueChange = onVolumeChange,
                 enabled = state.soundsEnabled,
-                modifier = Modifier.width(SLIDER_WIDTH),
+                modifier = Modifier.width(Layout.searchPill),
             )
             // Mismo interruptor que la campana de la cabecera de la lista: silenciar es general,
             // no vacia la lista ni la reordena, asi que vive en Ajustes y no como una banda mas.

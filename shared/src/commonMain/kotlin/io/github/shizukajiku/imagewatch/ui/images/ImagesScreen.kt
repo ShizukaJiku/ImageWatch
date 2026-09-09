@@ -45,6 +45,7 @@ import io.github.shizukajiku.imagewatch.domain.ImageStatus
 import io.github.shizukajiku.imagewatch.ui.components.AppSvg
 import io.github.shizukajiku.imagewatch.ui.components.SvgIcon
 import io.github.shizukajiku.imagewatch.ui.theme.IconSize
+import io.github.shizukajiku.imagewatch.ui.theme.Layout
 import io.github.shizukajiku.imagewatch.ui.theme.LocalIsDark
 import io.github.shizukajiku.imagewatch.ui.theme.Radius
 import io.github.shizukajiku.imagewatch.ui.theme.Space
@@ -52,17 +53,6 @@ import io.github.shizukajiku.imagewatch.ui.theme.TypeScale
 import io.github.shizukajiku.imagewatch.ui.theme.ghostBackground
 import io.github.shizukajiku.imagewatch.ui.theme.mutedText
 import io.github.shizukajiku.imagewatch.ui.theme.statusColors
-
-// Ancho fijo del buscador: no es un paso de la escala de espaciado, es el ancho que le da sitio
-// al indicador de sondeo y al boton de agregar en la misma fila.
-private val SEARCH_WIDTH = 260.dp
-
-// Pie de la ventana: el estado de la comprobacion vive en 92 px y la nota en 260 px, ninguno de
-// los dos en la escala de Space -son los huecos que fija el diseño para que "Activo", "Detenido"
-// y "Sin conexión" no muevan la nota de al lado-.
-private val FOOT_STATE_WIDTH = 92.dp
-private val FOOT_NOTE_WIDTH = 260.dp
-private val FOOT_MUTED_WIDTH = 148.dp
 
 /** Una entrada de la lista: cabecera de sección o fila. Un único `LazyColumn` para que alta, baja
  * y reordenación sigan animando con `animateItem()`, aunque la lista se vea como tres secciones. */
@@ -313,7 +303,7 @@ private fun Header(
             },
             singleLine = true,
             shape = RoundedCornerShape(Radius.pill),
-            modifier = Modifier.padding(top = Space.md).width(SEARCH_WIDTH),
+            modifier = Modifier.padding(top = Space.md).width(Layout.searchPill),
         )
     }
 }
@@ -580,7 +570,7 @@ private fun Footer(state: ImagesUiState, mutedAll: Boolean) {
             .padding(horizontal = Space.xl, vertical = Space.sm),
     ) {
         Row(
-            Modifier.width(FOOT_STATE_WIDTH),
+            Modifier.width(Layout.footState),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(Space.xs),
         ) {
@@ -593,10 +583,10 @@ private fun Footer(state: ImagesUiState, mutedAll: Boolean) {
             color = mutedText(dark),
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.width(FOOT_NOTE_WIDTH),
+            modifier = Modifier.width(Layout.footNote),
         )
         Spacer(Modifier.weight(1f))
-        Box(Modifier.width(FOOT_MUTED_WIDTH), contentAlignment = Alignment.CenterEnd) {
+        Box(Modifier.width(Layout.footMuted), contentAlignment = Alignment.CenterEnd) {
             if (mutedAll) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
@@ -617,7 +607,7 @@ private fun Footer(state: ImagesUiState, mutedAll: Boolean) {
             fontSize = TypeScale.caption,
             color = mutedText(dark),
             textAlign = TextAlign.End,
-            modifier = Modifier.width(FOOT_STATE_WIDTH),
+            modifier = Modifier.width(Layout.footState),
         )
     }
 }

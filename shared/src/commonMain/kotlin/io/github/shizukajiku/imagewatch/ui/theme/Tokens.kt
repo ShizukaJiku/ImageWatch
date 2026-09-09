@@ -101,3 +101,50 @@ object Elevation {
     /** El diálogo de confirmación, sobre su velo. */
     val dialog = 24.dp
 }
+
+/**
+ * Anchos y altos reservados que el diseño fija para que cambiar de estado no desplace a un
+ * vecino (Blueprint 1i). Ninguno es un paso de `Space`: son huecos de composición. Vivían como
+ * `private val` repartidos por `ImageRow`, `ImagesScreen`, `SettingsScreen` y `ToastWindow`.
+ */
+object Layout {
+    // Fila de la bandeja
+    val rowAge = 104.dp
+    val rowSkip = 44.dp
+    val rowPill = 104.dp
+    val rowChip = 88.dp
+    val rowKebab = 30.dp
+    val rowPadH = 14.dp
+    val rowPadV = 11.dp
+
+    // Cabecera de la bandeja
+    val searchPill = 260.dp
+
+    // Pie de la ventana
+    val footState = 92.dp
+    val footNote = 260.dp
+    val footMuted = 148.dp
+
+    // Cabecera de sección
+    val sectionCounter = 20.dp
+
+    // Barra de título
+    val titleBarHeight = 38.dp
+
+    // Aviso
+    val toastWidth = 340.dp
+    val toastHeight = 78.dp
+    val toastIcon = 26.dp
+    val toastAction = 84.dp
+    val toastClose = 24.dp
+    val toastTimer = 64.dp
+    val toastBar = 3.dp
+    val toastMetaMax = 200.dp
+    val toastScreenMargin = 16.dp
+
+    // Ajustes
+    val settingsField = 132.dp
+    val settingsHelpLine = 16.dp
+    val dialogWidth = 420.dp
+    val dialogConfirmMin = 132.dp
+}
