@@ -384,7 +384,6 @@ private fun MainScreen(wiring: Wiring, viewModel: ImagesViewModel) {
     val config by wiring.config.collectAsState()
     var screen by remember { mutableStateOf(Screen.IMAGES) }
     var adding by remember { mutableStateOf(false) }
-    var editing by remember { mutableStateOf<String?>(null) }
     var deleting by remember { mutableStateOf<String?>(null) }
 
     Crossfade(screen, label = "screen") { current ->
@@ -395,16 +394,14 @@ private fun MainScreen(wiring: Wiring, viewModel: ImagesViewModel) {
                     mutedAll = config.mutedAll,
                     onSearchChange = viewModel::onSearchChange,
                     onAdd = { adding = true },
-                    onAcknowledge = viewModel::requestAcknowledge,
-                    onUndoAcknowledge = viewModel::undoAcknowledge,
+                    onAcknowledge = viewModel::acknowledge,
                     onAcknowledgeAll = viewModel::acknowledgeAll,
                     onRefresh = viewModel::refreshNow,
-                    onEdit = { editing = it },
                     onDelete = { deleting = it },
                     onOpenSettings = { screen = Screen.SETTINGS },
                     onToggleMuteAll = { wiring.applyConfig(config.copy(mutedAll = !config.mutedAll)) },
                     onToggleSilence = viewModel::toggleSilence,
-                    onPromoteQueued = viewModel::promoteQueued,
+                    onToggleExpand = viewModel::toggleExpand,
                 )
 
             Screen.SETTINGS ->
@@ -420,11 +417,6 @@ private fun MainScreen(wiring: Wiring, viewModel: ImagesViewModel) {
 
     if (adding) {
         NameDialog("Agregar imagen", "", { adding = false }) { viewModel.addImage(it) }
-    }
-    editing?.let { previous ->
-        NameDialog("Editar imagen", previous, { editing = null }) {
-            viewModel.renameImage(previous, it)
-        }
     }
     deleting?.let { name ->
         DeleteDialog(name, { deleting = null }) { viewModel.removeImage(name) }
