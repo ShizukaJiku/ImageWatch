@@ -301,6 +301,9 @@ fun main() {
         // porque poner windowVisible a true no hace nada si ya era true: minimizada seguia
         // minimizada, y "Ver" no traia nada.
         var traerAlFrente by remember { mutableStateOf(0) }
+        // Vive aqui y no dentro de MainScreen: el "Ver todas" del resumen de avisos necesita
+        // poder devolver a la pantalla de Imagenes aunque el usuario estuviera en Ajustes.
+        var screen by remember { mutableStateOf(Screen.IMAGES) }
         val windowState = rememberWindowState()
         val config by wiring.config.collectAsState()
 
@@ -378,6 +381,7 @@ fun main() {
                         ToastKind.RESUMEN -> {
                             windowVisible = true
                             traerAlFrente++
+                            screen = Screen.IMAGES
                         }
                     }
                 },
@@ -437,7 +441,7 @@ fun main() {
                                     wiring.windowFocused.value = false
                                 },
                             )
-                            MainScreen(wiring, viewModel, cerrarApp)
+                            MainScreen(wiring, viewModel, cerrarApp, screen) { screen = it }
                         }
                     }
                 }
@@ -449,10 +453,15 @@ fun main() {
 private enum class Screen { IMAGES, SETTINGS }
 
 @Composable
-private fun MainScreen(wiring: Wiring, viewModel: ImagesViewModel, onExit: () -> Unit) {
+private fun MainScreen(
+    wiring: Wiring,
+    viewModel: ImagesViewModel,
+    onExit: () -> Unit,
+    screen: Screen,
+    onScreenChange: (Screen) -> Unit,
+) {
     val state by viewModel.state.collectAsState()
     val config by wiring.config.collectAsState()
-    var screen by remember { mutableStateOf(Screen.IMAGES) }
     var adding by remember { mutableStateOf(false) }
     var deleting by remember { mutableStateOf<String?>(null) }
 
@@ -468,7 +477,7 @@ private fun MainScreen(wiring: Wiring, viewModel: ImagesViewModel, onExit: () ->
                     onAcknowledgeAll = viewModel::acknowledgeAll,
                     onRefresh = viewModel::refreshNow,
                     onDelete = { deleting = it },
-                    onOpenSettings = { screen = Screen.SETTINGS },
+                    onOpenSettings = { onScreenChange(Screen.SETTINGS) },
                     onToggleMuteAll = { wiring.applyConfig(config.copy(mutedAll = !config.mutedAll)) },
                     onToggleSilence = viewModel::toggleSilence,
                     onToggleExpand = viewModel::toggleExpand,
@@ -482,7 +491,7 @@ private fun MainScreen(wiring: Wiring, viewModel: ImagesViewModel, onExit: () ->
                     watchedCount = state.total,
                     onTogglePolling = viewModel::togglePolling,
                     onExit = onExit,
-                    onBack = { screen = Screen.IMAGES },
+                    onBack = { onScreenChange(Screen.IMAGES) },
                 )
         }
     }
