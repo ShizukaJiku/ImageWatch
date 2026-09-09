@@ -54,6 +54,7 @@ import io.github.shizukajiku.imagewatch.ui.components.AppSvg
 import io.github.shizukajiku.imagewatch.ui.components.SvgIcon
 import io.github.shizukajiku.imagewatch.ui.theme.Dwell
 import io.github.shizukajiku.imagewatch.ui.theme.IconSize
+import io.github.shizukajiku.imagewatch.ui.theme.Layout
 import io.github.shizukajiku.imagewatch.ui.theme.LocalIsDark
 import io.github.shizukajiku.imagewatch.ui.theme.Motion
 import io.github.shizukajiku.imagewatch.ui.theme.Radius
@@ -62,18 +63,6 @@ import io.github.shizukajiku.imagewatch.ui.theme.TypeScale
 import io.github.shizukajiku.imagewatch.ui.theme.ghostBackground
 import io.github.shizukajiku.imagewatch.ui.theme.mutedText
 import io.github.shizukajiku.imagewatch.ui.theme.statusColors
-
-// Los cinco anchos reservados de la fila -ninguno es un paso de la escala de Space, son los
-// huecos que el diseño fija para que cambiar de estado nunca desplace a un vecino-.
-private val AGE_WIDTH = 104.dp
-private val SKIP_WIDTH = 44.dp
-private val PILL_WIDTH = 104.dp
-private val CHIP_WIDTH = 88.dp
-private val KEBAB_WIDTH = 30.dp
-
-// Relleno de la tarjeta de fila: no esta en la escala de Space, es el que ya trae el diseño.
-private val CARD_PADDING_H = 14.dp
-private val CARD_PADDING_V = 11.dp
 
 /** Techo del latido de una fila UNKNOWN mientras se comprueba: cuanto se apaga en el punto mas bajo. */
 private const val PULSE_MIN_ALPHA = 0.45f
@@ -102,7 +91,7 @@ private fun RowCard(
         Row(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(Space.md),
-            modifier = Modifier.padding(horizontal = CARD_PADDING_H, vertical = CARD_PADDING_V),
+            modifier = Modifier.padding(horizontal = Layout.rowPadH, vertical = Layout.rowPadV),
             content = content,
         )
     }
@@ -131,7 +120,7 @@ private fun RowScope.NameCell(name: String, origin: String, nameColor: Color) {
 
 @Composable
 private fun RowScope.AgeCell(age: String, caption: String, color: Color) {
-    Column(Modifier.width(AGE_WIDTH), horizontalAlignment = Alignment.End) {
+    Column(Modifier.width(Layout.rowAge), horizontalAlignment = Alignment.End) {
         Text(
             age,
             fontSize = TypeScale.meta,
@@ -151,18 +140,18 @@ private fun RowScope.AgeCell(age: String, caption: String, color: Color) {
 /** El contador de saltos («+2») a la izquierda de la píldora: hueco propio aunque este vacío. */
 @Composable
 private fun RowScope.SkipAndPillCell(skip: String, pillText: String, pillBackground: Color, pillForeground: Color) {
-    Row(Modifier.width(SKIP_WIDTH + PILL_WIDTH), horizontalArrangement = Arrangement.End) {
+    Row(Modifier.width(Layout.rowSkip + Layout.rowPill), horizontalArrangement = Arrangement.End) {
         Text(
             skip,
             fontSize = TypeScale.caption,
             color = mutedText(LocalIsDark.current),
             textAlign = TextAlign.End,
-            modifier = Modifier.width(SKIP_WIDTH).padding(end = Space.sm),
+            modifier = Modifier.width(Layout.rowSkip).padding(end = Space.sm),
         )
         Surface(
             color = pillBackground,
             shape = RoundedCornerShape(Radius.pill),
-            modifier = Modifier.width(PILL_WIDTH),
+            modifier = Modifier.width(Layout.rowPill),
         ) {
             Text(
                 pillText,
@@ -182,11 +171,11 @@ private fun RowScope.SkipAndPillCell(skip: String, pillText: String, pillBackgro
 @Composable
 private fun RowScope.ActionsCell(chip: @Composable () -> Unit, menu: @Composable () -> Unit) {
     Row(
-        Modifier.width(CHIP_WIDTH + Space.xs + KEBAB_WIDTH),
+        Modifier.width(Layout.rowChip + Space.xs + Layout.rowKebab),
         horizontalArrangement = Arrangement.spacedBy(Space.xs, Alignment.End),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Box(Modifier.width(CHIP_WIDTH), contentAlignment = Alignment.Center) { chip() }
+        Box(Modifier.width(Layout.rowChip), contentAlignment = Alignment.Center) { chip() }
         menu()
     }
 }
@@ -240,7 +229,7 @@ fun PendingRow(
         AgeCell(row.age, "pendiente", palette.foreground)
         // El contador de versiones saltadas ("+2") queda vacío: el núcleo compara local contra
         // remota, no cuenta las publicaciones intermedias, así que no hay una cifra real que
-        // enseñar aquí todavía. El hueco de SKIP_WIDTH se reserva igual para que la píldora no
+        // enseñar aquí todavía. El hueco de Layout.rowSkip se reserva igual para que la píldora no
         // se mueva el día que exista.
         SkipAndPillCell("", row.remote, palette.background, palette.foreground)
         ActionsCell(
@@ -393,7 +382,8 @@ private fun CheckingRow(row: ImageRowState, modifier: Modifier = Modifier) {
         NameCell(row.name, row.registry, MaterialTheme.colorScheme.onSurface)
         Row(
             Modifier.width(
-                AGE_WIDTH + Space.md + SKIP_WIDTH + PILL_WIDTH + Space.md + CHIP_WIDTH + Space.xs + KEBAB_WIDTH,
+                Layout.rowAge + Space.md + Layout.rowSkip + Layout.rowPill + Space.md + Layout.rowChip + Space.xs +
+                    Layout.rowKebab,
             ),
             horizontalArrangement = Arrangement.End,
             verticalAlignment = Alignment.CenterVertically,
@@ -431,7 +421,7 @@ fun UndoRow(name: String, onUndo: () -> Unit, modifier: Modifier = Modifier) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(Space.md),
-                modifier = Modifier.padding(horizontal = CARD_PADDING_H).height(41.dp),
+                modifier = Modifier.padding(horizontal = Layout.rowPadH).height(41.dp),
             ) {
                 SvgIcon(AppSvg.CHECK, statusColors(ImageStatus.OK, dark).foreground, Modifier.size(IconSize.sm))
                 Text(
@@ -487,7 +477,7 @@ private fun RowMenu(
     val reference = "${row.registry}:${if (row.remote != "—") row.remote else row.local}"
 
     Box {
-        IconButton({ expanded = true }, modifier = Modifier.size(KEBAB_WIDTH)) {
+        IconButton({ expanded = true }, modifier = Modifier.size(Layout.rowKebab)) {
             SvgIcon(AppSvg.KEBAB, MaterialTheme.colorScheme.onSurfaceVariant, Modifier.size(IconSize.md))
         }
         DropdownMenu(expanded, { expanded = false }) {

@@ -45,7 +45,9 @@ import androidx.compose.ui.window.WindowPosition
 import androidx.compose.ui.window.rememberWindowState
 import io.github.shizukajiku.imagewatch.ui.components.AppSvg
 import io.github.shizukajiku.imagewatch.ui.components.SvgIcon
+import io.github.shizukajiku.imagewatch.ui.theme.Elevation
 import io.github.shizukajiku.imagewatch.ui.theme.IconSize
+import io.github.shizukajiku.imagewatch.ui.theme.Layout
 import io.github.shizukajiku.imagewatch.ui.theme.Motion
 import io.github.shizukajiku.imagewatch.ui.theme.Radius
 import io.github.shizukajiku.imagewatch.ui.theme.Space
@@ -53,16 +55,10 @@ import io.github.shizukajiku.imagewatch.ui.theme.TypeScale
 import kotlinx.coroutines.delay
 import java.awt.GraphicsEnvironment
 
-// Ancho de la capa de toasts. No es estilo: es una compensacion de composicion que fija el
-// tamaño de la ventana sin decoracion.
-private const val TOAST_WIDTH = 340
-
-// Alto de la capa de toasts. Compensacion de composicion igual que TOAST_WIDTH; desaparece en la
-// Tarea 9 cuando la ventana deje de tener una altura fija.
+// Alto de la capa de toasts. Compensacion de composicion que fija el tamaño de la ventana sin
+// decoracion; desaparece cuando la ventana deje de tener una altura fija. El ancho y el margen
+// de pantalla viven ahora en `Layout` (`toastWidth`, `toastScreenMargin`).
 private const val LAYER_HEIGHT = 420
-
-// Separacion de la capa respecto al borde de la pantalla util (descontada la barra de tareas).
-private const val MARGIN = 16
 
 /**
  * Capa de toasts: una única ventana sin decoración anclada abajo a la derecha.
@@ -93,14 +89,14 @@ fun ToastLayer(
     val bounds = remember { GraphicsEnvironment.getLocalGraphicsEnvironment().maximumWindowBounds }
     val position = remember(bounds) {
         WindowPosition(
-            x = (bounds.x + bounds.width - TOAST_WIDTH - MARGIN).dp,
-            y = (bounds.y + bounds.height - LAYER_HEIGHT - MARGIN).dp,
+            x = (bounds.x + bounds.width).dp - Layout.toastWidth - Layout.toastScreenMargin,
+            y = (bounds.y + bounds.height - LAYER_HEIGHT).dp - Layout.toastScreenMargin,
         )
     }
 
     Window(
         onCloseRequest = {},
-        state = rememberWindowState(position = position, width = TOAST_WIDTH.dp, height = LAYER_HEIGHT.dp),
+        state = rememberWindowState(position = position, width = Layout.toastWidth, height = LAYER_HEIGHT.dp),
         undecorated = true,
         transparent = true,
         alwaysOnTop = true,
@@ -198,14 +194,12 @@ private fun ToastCard(
         Surface(
             shape = RoundedCornerShape(Radius.md),
             color = MaterialTheme.colorScheme.surfaceVariant,
-            // No hay token de elevacion todavia (solo Space/Radius/TypeScale/Motion/Dwell); se
-            // queda literal hasta que exista una categoria para eso.
-            tonalElevation = 6.dp,
+            tonalElevation = Elevation.toast,
             modifier = Modifier
                 // 6.dp de margen en cada lado de la tarjeta: junto con el ancho de abajo
-                // (TOAST_WIDTH - 12.dp = 2 x 6.dp) mantiene la tarjeta centrada en la capa.
+                // (Layout.toastWidth - 12.dp = 2 x 6.dp) mantiene la tarjeta centrada en la capa.
                 .padding(6.dp)
-                .width(TOAST_WIDTH.dp - 12.dp)
+                .width(Layout.toastWidth - 12.dp)
                 .onPointerEvent(PointerEventType.Enter) {
                     puntero = true
                     onPause()
