@@ -54,6 +54,7 @@ import io.github.shizukajiku.imagewatch.ui.theme.Radius
 import io.github.shizukajiku.imagewatch.ui.theme.Space
 import io.github.shizukajiku.imagewatch.ui.theme.TabularNums
 import io.github.shizukajiku.imagewatch.ui.theme.TypeScale
+import io.github.shizukajiku.imagewatch.ui.theme.focusRing
 
 private enum class Confirm { RESET, WIPE }
 
@@ -93,7 +94,8 @@ fun SettingsScreen(
             Box(
                 Modifier.size(32.dp)
                     .background(MaterialTheme.colorScheme.surfaceVariant, CircleShape)
-                    .clickable(onClick = onBack),
+                    .clickable(onClick = onBack)
+                    .focusRing(Radius.pill),
                 contentAlignment = Alignment.Center,
             ) {
                 SvgIcon(AppSvg.BACK, MaterialTheme.colorScheme.onSurfaceVariant, Modifier.size(IconSize.md))
@@ -358,7 +360,8 @@ private fun Segmented(selected: ThemePreference, onSelect: (ThemePreference) -> 
                         },
                     )
                     .clickable { onSelect(option) }
-                    .padding(vertical = Space.sm),
+                    .padding(vertical = Space.sm)
+                    .focusRing(Radius.pill),
             )
         }
     }
@@ -440,6 +443,7 @@ private fun FootPill(text: String, container: Color, onContent: Color, onClick: 
         color = container,
         shape = RoundedCornerShape(Radius.pill),
         onClick = onClick,
+        modifier = Modifier.focusRing(Radius.pill),
     ) {
         Text(
             text,
@@ -461,6 +465,11 @@ private fun Toggle(label: String, sub: String, checked: Boolean, onChange: (Bool
             Text(label, fontSize = TypeScale.body)
             Text(sub, fontSize = TypeScale.caption, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        Switch(checked = checked, onCheckedChange = onChange, enabled = enabled)
+        Switch(
+            checked = checked,
+            onCheckedChange = onChange,
+            enabled = enabled,
+            modifier = Modifier.focusRing(Radius.pill),
+        )
     }
 }
