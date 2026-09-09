@@ -1,7 +1,6 @@
 package io.github.shizukajiku.imagewatch.ui.images
 
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
@@ -25,10 +24,11 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.Button
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -45,6 +45,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -261,15 +262,7 @@ private fun Header(
     onRefresh: (String?) -> Unit,
     onToggleMuteAll: () -> Unit,
 ) {
-    val searchFocus = remember { FocusRequester() }
     var searchExpanded by rememberSaveable { mutableStateOf(state.search.isNotEmpty()) }
-    var searchFocused by remember { mutableStateOf(false) }
-    // Si el filtro se limpia desde fuera -«Ver» en un aviso llama a highlight()-, el buscador
-    // vuelve a su icono. Guardado con el foco: borrar a mano el último carácter mientras se
-    // escribe no debe replegar el campo bajo el cursor.
-    LaunchedEffect(state.search, searchFocused) {
-        if (state.search.isEmpty() && !searchFocused) searchExpanded = false
-    }
 
     Column(Modifier.padding(start = Space.xl, top = Space.lg, end = Space.xl, bottom = Space.md)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -301,28 +294,60 @@ private fun Header(
                     SvgIcon(AppSvg.CHECK_ALL, MaterialTheme.colorScheme.primary, Modifier.size(IconSize.lg))
                 }
             }
-            // Buscador replegado a icono (Blueprint «Cabecera de la bandeja»): se expande a
-            // píldora en su sitio, sin empujar el titular hacia un lado. Se repliega al perder el
-            // foco vacío.
+            // Buscador replegado a icono (Blueprint «Cabecera de la bandeja»): se expande a una
+            // píldora de 34 dp en su sitio -no empuja el titular ni crece en vertical-. Se
+            // repliega al perder el foco solo si está vacío y ya llegó a tenerlo: así no colapsa
+            // en el fotograma en que aparece, antes de que el foco aterrice.
             if (searchExpanded) {
-                OutlinedTextField(
-                    value = state.search,
-                    onValueChange = onSearchChange,
-                    placeholder = { Text("Buscar imagen…") },
-                    leadingIcon = {
-                        SvgIcon(AppSvg.SEARCH, MaterialTheme.colorScheme.onSurfaceVariant, Modifier.size(IconSize.sm))
-                    },
-                    singleLine = true,
+                val searchFocus = remember { FocusRequester() }
+                var hasHadFocus by remember { mutableStateOf(false) }
+                Surface(
+                    color = MaterialTheme.colorScheme.surfaceVariant,
                     shape = RoundedCornerShape(Radius.pill),
-                    modifier = Modifier
-                        .width(Layout.searchPill)
-                        .focusRequester(searchFocus)
-                        .onFocusChanged {
-                            searchFocused = it.isFocused
-                            if (!it.isFocused && state.search.isEmpty()) searchExpanded = false
-                        }
-                        .animateContentSize(),
-                )
+                    modifier = Modifier.width(Layout.searchPill).height(34.dp),
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(Space.sm),
+                        modifier = Modifier.padding(horizontal = Space.md),
+                    ) {
+                        SvgIcon(
+                            AppSvg.SEARCH,
+                            MaterialTheme.colorScheme.onSurfaceVariant,
+                            Modifier.size(IconSize.sm),
+                        )
+                        BasicTextField(
+                            value = state.search,
+                            onValueChange = onSearchChange,
+                            singleLine = true,
+                            textStyle = LocalTextStyle.current.copy(
+                                color = MaterialTheme.colorScheme.onSurface,
+                                fontSize = TypeScale.body,
+                            ),
+                            cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                            modifier = Modifier
+                                .weight(1f)
+                                .focusRequester(searchFocus)
+                                .onFocusChanged {
+                                    if (it.isFocused) {
+                                        hasHadFocus = true
+                                    } else if (hasHadFocus && state.search.isEmpty()) {
+                                        searchExpanded = false
+                                    }
+                                },
+                            decorationBox = { inner ->
+                                if (state.search.isEmpty()) {
+                                    Text(
+                                        "Buscar imagen…",
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        fontSize = TypeScale.body,
+                                    )
+                                }
+                                inner()
+                            },
+                        )
+                    }
+                }
                 LaunchedEffect(Unit) { searchFocus.requestFocus() }
             } else {
                 IconButton({ searchExpanded = true }) {
