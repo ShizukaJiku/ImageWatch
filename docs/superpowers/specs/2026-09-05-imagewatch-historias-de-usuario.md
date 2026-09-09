@@ -227,6 +227,35 @@ para no dejar rastro de qué vigilaba.
 Código: `Wiring.wipeLocalData`
 Prueba: repaso visual.
 
+### H-98 · La bandeja se maneja entera con teclado (rediseño, fase 7)
+
+Como usuario que prefiere no soltar el teclado
+quiero mover el foco entre filas con las flechas, reconocer con Espacio, desplegar con Enter
+y plegar con Escape
+para no depender del ratón para las acciones del día a día.
+
+**Dado** el foco en una fila de la lista
+**Cuando** pulso ↓ o ↑
+**Entonces** el foco pasa a la fila siguiente o anterior.
+
+**Dado** el foco en una fila de «Versión nueva»
+**Cuando** pulso Espacio
+**Entonces** se reconoce igual que pulsar «Visto».
+
+**Dado** el foco en cualquier fila
+**Cuando** pulso Enter
+**Entonces** se despliega o pliega su detalle, igual que un clic en la banda.
+
+**Dado** una fila desplegada
+**Cuando** pulso Escape
+**Entonces** se pliega.
+
+**Y** todo control interactivo de la bandeja, Ajustes y el diálogo de confirmación enseña un
+anillo de foco de 2 dp al recibir el foco por teclado, sin cambiar de tamaño.
+
+Código: `Modifier.focusRing` (`ui/theme/FocusRing.kt`), `ImagesScreen.kt` (`onPreviewKeyEvent`).
+Prueba: repaso visual — sin test de Compose UI.
+
 ## Sondeo
 
 ### H-09 · El sondeo arranca detenido
