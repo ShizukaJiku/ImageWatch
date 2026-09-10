@@ -16,7 +16,11 @@ import kotlinx.serialization.json.Json
 
 class HttpImageSource(private val client: HttpClient, baseUrl: String) : ImageSource {
     private val baseUrl: String
-    private val json = Json
+
+    // El origen remoto puede añadir campos que no nos interesan; solo leemos los tres de
+    // [ReleaseDto]. Sin esto, cualquier llave extra en la respuesta rompe el parseo y manda la
+    // imagen a estado de error.
+    private val json = Json { ignoreUnknownKeys = true }
 
     init {
         val endpoint = baseUrl.replace(Regex("/$"), "")

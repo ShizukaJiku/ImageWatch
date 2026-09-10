@@ -35,6 +35,23 @@ internal class HttpImageSourceTest {
     }
 
     @Test
+    fun ignoresUnknownKeysInTheResponse() = runTest {
+        val engine = MockEngine { request ->
+            respond(
+                content = """{"productName":"alpha","extra":42,"nested":{"a":1},""" +
+                    """"lastRelease":"registry.local/alpha:1.2.3","update_time":"2026-09-03T10:00:00"}""",
+                status = HttpStatusCode.OK,
+                headers = headersOf("Content-Type", "application/json"),
+            )
+        }
+
+        val results = source(engine).findByNames(listOf("alpha"))
+
+        assertNull(results.first().error)
+        assertEquals("registry.local/alpha:1.2.3", assertNotNull(results.first().release).reference)
+    }
+
+    @Test
     fun reportsAnErrorPerImageWithoutAffectingTheOthers() = runTest {
         val engine = MockEngine { request ->
             if (request.url.encodedPath.endsWith("/beta")) {
