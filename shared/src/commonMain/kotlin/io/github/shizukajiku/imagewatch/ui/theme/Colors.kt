@@ -126,3 +126,11 @@ fun ghostBackground(dark: Boolean): Color = if (dark) Color(0xFF202023) else Col
  * texto secundario -origen de la fila, subtítulo-, y ese uso pesa mas que este.
  */
 fun mutedText(dark: Boolean): Color = if (dark) Color(0xFF5C5C66) else Color(0xFF9A9AA2)
+
+/**
+ * Borde y divisor fino -`--hair` en el diseño-, distinto de `surfaceVariant` -`--surfv`, fondo de
+ * píldora- en tema claro (en oscuro los dos valores coinciden, así que ahí no hay cambio visible).
+ * Antes de este token, cada borde/divisor usaba `surfaceVariant` porque era el único disponible,
+ * y en tema claro salía `#ECECF0` en vez de `#E4E4EA`.
+ */
+fun hairline(dark: Boolean): Color = if (dark) Color(0xFF2A2A2E) else Color(0xFFE4E4EA)

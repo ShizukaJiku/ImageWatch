@@ -29,8 +29,12 @@ private val RING_OFFSET = 2.dp
  * duplicaría la parada de `Tab` sobre el mismo control visual.
  *
  * `cornerRadius` no tiene por qué coincidir en tipo con el radio real de la forma: un valor mayor
- * que la mitad del lado corto -como `Radius.pill`, 999 dp- se recorta solo al dibujar, así que
- * sirve igual para una tarjeta con esquinas y para una píldora o un círculo.
+ * que la mitad del lado corto -como `Radius.pill`, 999 dp- se clampa al dibujar al mínimo de las
+ * dos dimensiones del anillo, así que sirve igual para una tarjeta con esquinas y para una píldora
+ * o un círculo. El clamp es manual y no de `drawRoundRect` -que, a diferencia de
+ * `RoundedCornerShape`, clampa el radio de forma independiente por eje-: sin él, un radio de
+ * píldora sobre una caja no cuadrada (un chip de 88×30) dibuja dos arcos elípticos en vez de una
+ * píldora real.
  */
 fun Modifier.focusRing(cornerRadius: Dp = Radius.md): Modifier = composed {
     var focused by remember { mutableStateOf(false) }
@@ -42,11 +46,14 @@ fun Modifier.focusRing(cornerRadius: Dp = Radius.md): Modifier = composed {
             if (focused) {
                 val strokeWidthPx = RING_WIDTH.toPx()
                 val offsetPx = RING_OFFSET.toPx()
+                val ringWidth = size.width + offsetPx * 2
+                val ringHeight = size.height + offsetPx * 2
+                val effectiveRadius = minOf(cornerRadius.toPx() + offsetPx, ringWidth / 2f, ringHeight / 2f)
                 drawRoundRect(
                     color = color,
                     topLeft = Offset(-offsetPx, -offsetPx),
-                    size = Size(size.width + offsetPx * 2, size.height + offsetPx * 2),
-                    cornerRadius = CornerRadius(cornerRadius.toPx() + offsetPx),
+                    size = Size(ringWidth, ringHeight),
+                    cornerRadius = CornerRadius(effectiveRadius),
                     style = Stroke(strokeWidthPx),
                 )
             }
