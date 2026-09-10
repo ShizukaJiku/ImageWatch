@@ -25,8 +25,6 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.material3.Button
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -59,6 +57,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import io.github.shizukajiku.imagewatch.domain.ImageStatus
 import io.github.shizukajiku.imagewatch.ui.components.AppSvg
+import io.github.shizukajiku.imagewatch.ui.components.IwIconButton
+import io.github.shizukajiku.imagewatch.ui.components.Pill
 import io.github.shizukajiku.imagewatch.ui.components.SvgIcon
 import io.github.shizukajiku.imagewatch.ui.theme.IconSize
 import io.github.shizukajiku.imagewatch.ui.theme.Layout
@@ -116,7 +116,7 @@ fun ImagesScreen(
     onToggleExpand: (String) -> Unit,
 ) {
     Column(Modifier.fillMaxSize()) {
-        Header(state, mutedAll, onSearchChange, onAdd, onOpenSettings, onAcknowledgeAll, onRefresh, onToggleMuteAll)
+        Header(state, mutedAll, onSearchChange, onAdd, onOpenSettings, onToggleMuteAll)
 
         if (state.total == 0) {
             // Solo «Sin imágenes vigiladas» es un vacío de verdad -no hay nada en local que
@@ -328,8 +328,6 @@ private fun Header(
     onSearchChange: (String) -> Unit,
     onAdd: () -> Unit,
     onOpenSettings: () -> Unit,
-    onAcknowledgeAll: () -> Unit,
-    onRefresh: (String?) -> Unit,
     onToggleMuteAll: () -> Unit,
 ) {
     var searchExpanded by rememberSaveable { mutableStateOf(state.search.isNotEmpty()) }
@@ -351,18 +349,6 @@ private fun Header(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = TabularNums,
                 )
-            }
-            // Comprobar todas ya. Junto a los demas iconos y no en la barra de sondeo: es una
-            // accion sobre la lista entera, como agregar, no un control del calendario.
-            IconButton({ onRefresh(null) }) {
-                SvgIcon(AppSvg.REFRESH, MaterialTheme.colorScheme.onSurfaceVariant, Modifier.size(IconSize.lg))
-            }
-            // Solo aparece si hay algo que dar por visto: un boton que no hace nada ensena a
-            // desconfiar de los botones.
-            if (state.canAcknowledgeAll) {
-                IconButton(onAcknowledgeAll) {
-                    SvgIcon(AppSvg.CHECK_ALL, MaterialTheme.colorScheme.primary, Modifier.size(IconSize.lg))
-                }
             }
             // Buscador replegado a icono (Blueprint «Cabecera de la bandeja»): se expande a una
             // píldora de 34 dp en su sitio -no empuja el titular ni crece en vertical-. Se
@@ -420,38 +406,25 @@ private fun Header(
                 }
                 LaunchedEffect(Unit) { searchFocus.requestFocus() }
             } else {
-                IconButton({ searchExpanded = true }) {
-                    SvgIcon(AppSvg.SEARCH, MaterialTheme.colorScheme.onSurfaceVariant, Modifier.size(IconSize.md))
-                }
+                IwIconButton(AppSvg.SEARCH, { searchExpanded = true }, iconSize = IconSize.md)
             }
             // Atajo de «silenciar todos los avisos»: la campana se tacha y se apaga sobre fondo
             // marcado, el mismo interruptor que vive en Ajustes → Avisos.
-            Surface(
-                color = if (mutedAll) MaterialTheme.colorScheme.surfaceVariant else Color.Transparent,
-                shape = CircleShape,
-            ) {
-                IconButton(onToggleMuteAll) {
-                    val tint = if (mutedAll) {
-                        MaterialTheme.colorScheme.onSurface
-                    } else {
-                        MaterialTheme.colorScheme.onSurfaceVariant
-                    }
-                    SvgIcon(if (mutedAll) AppSvg.BELL_OFF else AppSvg.BELL, tint, Modifier.size(IconSize.lg))
-                }
-            }
-            IconButton(onOpenSettings) {
-                SvgIcon(AppSvg.GEAR, MaterialTheme.colorScheme.onSurfaceVariant, Modifier.size(IconSize.lg))
-            }
-            Button(
-                onAdd,
-                modifier = Modifier.height(33.dp),
-                shape = RoundedCornerShape(Radius.pill),
+            IwIconButton(
+                icon = if (mutedAll) AppSvg.BELL_OFF else AppSvg.BELL,
+                onClick = onToggleMuteAll,
+                toggledOn = mutedAll,
+            )
+            IwIconButton(AppSvg.GEAR, onOpenSettings)
+            Pill(
+                text = "Agregar",
+                containerColor = MaterialTheme.colorScheme.primary,
+                contentColor = MaterialTheme.colorScheme.onPrimary,
+                onClick = onAdd,
+                leadingIcon = AppSvg.PLUS,
                 contentPadding = PaddingValues(horizontal = Space.lg, vertical = Space.sm),
-            ) {
-                SvgIcon(AppSvg.PLUS, MaterialTheme.colorScheme.onPrimary, Modifier.size(IconSize.sm))
-                Spacer(Modifier.width(Space.sm))
-                Text("Agregar imagen", fontSize = TypeScale.body, fontWeight = FontWeight.SemiBold)
-            }
+                fontSize = TypeScale.body,
+            )
         }
     }
 }
@@ -509,20 +482,12 @@ private fun NoticeBanner(state: ImagesUiState, onRetry: () -> Unit) {
                     )
                     Spacer(Modifier.weight(1f))
                     if (disconnected) {
-                        Surface(
-                            color = MaterialTheme.colorScheme.surfaceVariant,
-                            shape = RoundedCornerShape(Radius.pill),
+                        Pill(
+                            text = "Reintentar ahora",
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                            contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
                             onClick = onRetry,
-                            modifier = Modifier.focusRing(Radius.pill),
-                        ) {
-                            Text(
-                                "Reintentar ahora",
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                fontSize = TypeScale.meta,
-                                fontWeight = FontWeight.SemiBold,
-                                modifier = Modifier.padding(horizontal = Space.md, vertical = Space.xs + 1.dp),
-                            )
-                        }
+                        )
                     }
                 }
             }
@@ -536,7 +501,13 @@ private fun PendingSectionHeader(count: Int, onAcknowledgeAll: () -> Unit) {
     SectionHeader(palette.foreground, "Versión nueva", count) {
         // Blueprint (mapa de acciones): «Aplica «Visto» a todas las filas de la sección en una
         // sola escritura». Antes limpiaba el buscador, que no es lo que el chip promete.
-        HeaderChip("Ver todas", onClick = onAcknowledgeAll)
+        Pill(
+            text = "Ver todas",
+            containerColor = MaterialTheme.colorScheme.primaryContainer,
+            contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+            onClick = onAcknowledgeAll,
+            leadingIcon = AppSvg.CHECK_ALL,
+        )
     }
 }
 
@@ -544,7 +515,13 @@ private fun PendingSectionHeader(count: Int, onAcknowledgeAll: () -> Unit) {
 private fun ErrorSectionHeader(count: Int, onRetryAll: () -> Unit) {
     val palette = statusColors(ImageStatus.ERROR, LocalIsDark.current)
     SectionHeader(palette.foreground, "No se pudo verificar", count) {
-        HeaderChip("Reintentar", onClick = onRetryAll)
+        Pill(
+            text = "Reintentar",
+            containerColor = MaterialTheme.colorScheme.primaryContainer,
+            contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+            onClick = onRetryAll,
+            leadingIcon = AppSvg.REFRESH,
+        )
     }
 }
 
@@ -619,24 +596,6 @@ private fun SectionHeader(dotColor: Color, title: String, count: Int, trailing: 
 }
 
 @Composable
-private fun HeaderChip(text: String, onClick: () -> Unit) {
-    Surface(
-        color = MaterialTheme.colorScheme.primaryContainer,
-        shape = RoundedCornerShape(Radius.pill),
-        onClick = onClick,
-        modifier = Modifier.focusRing(Radius.pill),
-    ) {
-        Text(
-            text,
-            color = MaterialTheme.colorScheme.onPrimaryContainer,
-            fontWeight = FontWeight.SemiBold,
-            fontSize = TypeScale.meta,
-            modifier = Modifier.padding(horizontal = Space.md, vertical = Space.xs + 1.dp),
-        )
-    }
-}
-
-@Composable
 private fun EmptyState(pollIntervalSeconds: Long, onAdd: () -> Unit) {
     Column(
         Modifier.fillMaxSize().padding(bottom = 40.dp),
@@ -662,19 +621,13 @@ private fun EmptyState(pollIntervalSeconds: Long, onAdd: () -> Unit) {
             modifier = Modifier.width(320.dp),
         )
         Spacer(Modifier.height(Space.md))
-        Surface(
-            color = MaterialTheme.colorScheme.primaryContainer,
-            shape = RoundedCornerShape(Radius.pill),
+        Pill(
+            text = "Agregar imagen",
+            containerColor = MaterialTheme.colorScheme.primaryContainer,
+            contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
             onClick = onAdd,
-        ) {
-            Text(
-                "Agregar imagen",
-                color = MaterialTheme.colorScheme.onPrimaryContainer,
-                fontWeight = FontWeight.SemiBold,
-                fontSize = TypeScale.meta,
-                modifier = Modifier.padding(horizontal = Space.lg, vertical = Space.sm),
-            )
-        }
+            contentPadding = PaddingValues(horizontal = Space.lg, vertical = Space.sm),
+        )
     }
 }
 
