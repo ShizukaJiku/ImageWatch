@@ -26,7 +26,9 @@ compose.desktop {
         mainClass = "io.github.shizukajiku.imagewatch.MainKt"
 
         nativeDistributions {
-            targetFormats(TargetFormat.Msi)
+            // Msi: instalador por usuario (sin admin). AppImage: carpeta autocontenida con su
+            // propio runtime, se distribuye en zip y corre sin instalar.
+            targetFormats(TargetFormat.Msi, TargetFormat.AppImage)
             // El runtime que arma jlink es minimo, y sin estos cuatro modulos la aplicacion
             // instalada muere en el arranque con "Failed to launch JVM". Los tres primeros los
             // dice `./gradlew :desktopApp:suggestRuntimeModules`; el cuarto NO, y ese es el que
@@ -38,9 +40,10 @@ compose.desktop {
             // que cambie una dependencia de red o de registro.
             modules("java.instrument", "java.management", "jdk.unsupported", "java.naming")
             packageName = "ImageWatch"
-            // Aparte de la version del proyecto a proposito: MSI exige MAYOR.MENOR.PARCHE con
-            // mayor > 0, y "1.0-SNAPSHOT" no lo es.
-            packageVersion = "1.0.1"
+            // De gradle.properties (imagewatch.version), fuente unica de la version de entrega.
+            // MSI exige MAYOR.MENOR.PARCHE con mayor > 0. El fallback solo cubre un build sin la
+            // propiedad; en la practica siempre esta.
+            packageVersion = (project.findProperty("imagewatch.version") as String?) ?: "1.0.0"
             description = "Vigila las versiones de imagenes de contenedor publicadas en un registry"
             vendor = "ShizukaJiku"
 
@@ -48,6 +51,9 @@ compose.desktop {
                 menu = true
                 shortcut = true
                 dirChooser = true
+                // Marca de ImageWatch a varios tamaños. Se regenera desde AppIconPainter con
+                // `./gradlew :desktopApp:generateIcon` cuando cambie la marca.
+                iconFile.set(project.file("icons/ImageWatch.ico"))
                 // Instala bajo el perfil del usuario (AppData\Local) en vez de Program Files: sin
                 // esto jpackage pide elevacion de administrador para escribir en Program Files
                 // aunque la aplicacion no la necesite para nada mas.
@@ -58,4 +64,14 @@ compose.desktop {
             }
         }
     }
+}
+
+// Regenera icons/ImageWatch.ico desde AppIconPainter. Fuera del ciclo de build a proposito: la
+// marca cambia casi nunca y el .ico va commiteado. Ejecutar tras tocar AppIconPainter.
+tasks.register<JavaExec>("generateIcon") {
+    group = "build"
+    description = "Regenera desktopApp/icons/ImageWatch.ico desde AppIconPainter"
+    classpath = sourceSets["main"].runtimeClasspath
+    mainClass.set("io.github.shizukajiku.imagewatch.tools.GenerateIconKt")
+    workingDir = projectDir
 }
