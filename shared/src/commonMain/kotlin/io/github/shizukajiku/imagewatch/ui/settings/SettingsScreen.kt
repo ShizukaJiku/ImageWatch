@@ -52,11 +52,13 @@ import io.github.shizukajiku.imagewatch.ui.components.SvgIcon
 import io.github.shizukajiku.imagewatch.ui.dialogs.ConfirmDialog
 import io.github.shizukajiku.imagewatch.ui.theme.IconSize
 import io.github.shizukajiku.imagewatch.ui.theme.Layout
+import io.github.shizukajiku.imagewatch.ui.theme.LocalIsDark
 import io.github.shizukajiku.imagewatch.ui.theme.Radius
 import io.github.shizukajiku.imagewatch.ui.theme.Space
 import io.github.shizukajiku.imagewatch.ui.theme.TabularNums
 import io.github.shizukajiku.imagewatch.ui.theme.TypeScale
 import io.github.shizukajiku.imagewatch.ui.theme.focusRing
+import io.github.shizukajiku.imagewatch.ui.theme.mutedText
 
 private enum class Confirm { RESET, WIPE }
 
@@ -125,12 +127,15 @@ fun SettingsScreen(
                 SettingsCard("Comprobación") {
                     Toggle(
                         "Iniciar al encender el equipo",
-                        "La ventana arranca minimizada",
+                        "Al iniciar sesión arranca oculta en la bandeja",
                         state.autostart,
                         onAutostartChange,
                     )
-                    Row(horizontalArrangement = Arrangement.spacedBy(Space.lg)) {
-                        Column {
+                    Row(horizontalArrangement = Arrangement.spacedBy(Space.md)) {
+                        Column(
+                            Modifier.weight(1f),
+                            verticalArrangement = Arrangement.spacedBy(Space.xs),
+                        ) {
                             Text(
                                 "Intervalo",
                                 fontSize = TypeScale.meta,
@@ -145,7 +150,10 @@ fun SettingsScreen(
                             )
                             HelpLine(state.intervalError ?: "Entre 5 s y 3600 s.", state.intervalError != null)
                         }
-                        Column(horizontalAlignment = Alignment.End) {
+                        Column(
+                            horizontalAlignment = Alignment.End,
+                            verticalArrangement = Arrangement.spacedBy(Space.xs),
+                        ) {
                             Text(
                                 "Estado",
                                 fontSize = TypeScale.meta,
@@ -156,6 +164,7 @@ fun SettingsScreen(
                                 MaterialTheme.colorScheme.surfaceVariant,
                                 MaterialTheme.colorScheme.onSurfaceVariant,
                                 onTogglePolling,
+                                leadingIcon = if (polling) AppSvg.PAUSE else AppSvg.PLAY,
                             )
                             Text(
                                 if (verifying) {
@@ -166,7 +175,7 @@ fun SettingsScreen(
                                     "detenido"
                                 },
                                 fontSize = TypeScale.caption,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                color = mutedText(LocalIsDark.current),
                                 modifier = Modifier.height(Layout.settingsHelpLine),
                             )
                         }
@@ -239,12 +248,16 @@ fun SettingsScreen(
                 "Restablecer ajustes",
                 MaterialTheme.colorScheme.surfaceVariant,
                 MaterialTheme.colorScheme.onSurfaceVariant,
-            ) { confirming = Confirm.RESET }
+                onClick = { confirming = Confirm.RESET },
+                leadingIcon = AppSvg.REFRESH,
+            )
             FootPill(
                 "Borrar datos locales",
                 MaterialTheme.colorScheme.errorContainer,
                 MaterialTheme.colorScheme.onErrorContainer,
-            ) { confirming = Confirm.WIPE }
+                onClick = { confirming = Confirm.WIPE },
+                leadingIcon = AppSvg.TRASH,
+            )
             Spacer(Modifier.weight(1f))
             Text(
                 "$watchedCount imágenes vigiladas",
@@ -423,12 +436,19 @@ private fun FieldBox(isError: Boolean, content: @Composable () -> Unit) {
 }
 
 @Composable
-private fun FootPill(text: String, container: Color, onContent: Color, onClick: () -> Unit) {
+private fun FootPill(
+    text: String,
+    container: Color,
+    onContent: Color,
+    onClick: () -> Unit,
+    leadingIcon: AppSvg? = null,
+) {
     Pill(
         text = text,
         containerColor = container,
         contentColor = onContent,
         onClick = onClick,
+        leadingIcon = leadingIcon,
         contentPadding = PaddingValues(horizontal = Space.lg, vertical = Space.sm),
     )
 }

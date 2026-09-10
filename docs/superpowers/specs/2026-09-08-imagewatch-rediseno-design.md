@@ -137,7 +137,7 @@ Referencia rápida. Cada fila se desarrolla en su fase.
 | A-2 | Dos columnas de tarjetas con borde (`surface`, `Radius.md`) | Columna única con scroll y `HorizontalDivider` | 4 |
 | A-3 | Control segmentado `Sistema \| Claro \| Oscuro` con pista | `FilterChip` en fila | 4 |
 | A-4 | Línea de ayuda de **16 dp reservados** bajo URL e intervalo; al fallar solo cambian texto, color y borde | Sin línea por campo; el error sale junto a «Guardar» | 4 |
-| A-5 | Toggle **«Iniciar al encender el equipo»** (la ventana arranca minimizada) | No existe | 4 |
+| A-5 | Toggle **«Iniciar al encender el equipo»** (al iniciar sesión arranca oculta en la bandeja; `--minimized`) | No existe | 4 |
 | A-6 | **Sin «Modo simulación»** | Toggle presente | 4 |
 | A-7 | Cluster «Estado» con botón Detener/Iniciar + caption `comprobando · N s` a la derecha de la tarjeta Comprobación | `TextButton` + «● Activo» en fila | 4 |
 | A-8 | Pie: `Restablecer ajustes` (neutro) + `Borrar datos locales` (contenedor de error) a la izquierda, `N imágenes vigiladas` (`tnum`) a la derecha | No existe ninguna de las dos acciones | 4 |
