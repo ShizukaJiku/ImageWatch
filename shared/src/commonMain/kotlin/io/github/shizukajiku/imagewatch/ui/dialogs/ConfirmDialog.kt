@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -20,10 +21,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import io.github.shizukajiku.imagewatch.ui.components.AppSvg
+import io.github.shizukajiku.imagewatch.ui.components.Pill
 import io.github.shizukajiku.imagewatch.ui.components.SvgIcon
 import io.github.shizukajiku.imagewatch.ui.theme.Elevation
 import io.github.shizukajiku.imagewatch.ui.theme.IconSize
@@ -32,7 +33,6 @@ import io.github.shizukajiku.imagewatch.ui.theme.Radius
 import io.github.shizukajiku.imagewatch.ui.theme.Space
 import io.github.shizukajiku.imagewatch.ui.theme.TabularNums
 import io.github.shizukajiku.imagewatch.ui.theme.TypeScale
-import io.github.shizukajiku.imagewatch.ui.theme.focusRing
 
 /**
  * Diálogo de confirmación para las acciones que no se pueden deshacer (Blueprint «Diálogo de
@@ -106,39 +106,24 @@ fun ConfirmDialog(
                 )
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(Space.sm)) {
                     Spacer(Modifier.weight(1f))
-                    Surface(
-                        color = MaterialTheme.colorScheme.surfaceVariant,
-                        shape = RoundedCornerShape(Radius.pill),
+                    Pill(
+                        text = "Cancelar",
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                        contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
                         onClick = onDismiss,
-                        modifier = Modifier.focusRing(Radius.pill),
-                    ) {
-                        Text(
-                            "Cancelar",
-                            fontSize = TypeScale.meta,
-                            fontWeight = FontWeight.SemiBold,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(horizontal = Space.md, vertical = Space.sm),
-                        )
-                    }
-                    Surface(
-                        color = MaterialTheme.colorScheme.errorContainer,
-                        shape = RoundedCornerShape(Radius.pill),
+                        contentPadding = PaddingValues(horizontal = Space.md, vertical = Space.sm),
+                    )
+                    Pill(
+                        text = confirmLabel,
+                        containerColor = MaterialTheme.colorScheme.errorContainer,
+                        contentColor = MaterialTheme.colorScheme.onErrorContainer,
                         onClick = {
                             onConfirm()
                             onDismiss()
                         },
-                        modifier = Modifier.focusRing(Radius.pill),
-                    ) {
-                        Text(
-                            confirmLabel,
-                            fontSize = TypeScale.meta,
-                            fontWeight = FontWeight.SemiBold,
-                            color = MaterialTheme.colorScheme.onErrorContainer,
-                            textAlign = TextAlign.Center,
-                            modifier = Modifier.widthIn(min = Layout.dialogConfirmMin)
-                                .padding(horizontal = Space.md, vertical = Space.sm),
-                        )
-                    }
+                        width = Layout.dialogConfirmMin,
+                        contentPadding = PaddingValues(horizontal = Space.md, vertical = Space.sm),
+                    )
                 }
             }
         }
