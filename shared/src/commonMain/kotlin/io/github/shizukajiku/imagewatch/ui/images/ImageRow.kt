@@ -15,6 +15,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
@@ -26,7 +27,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -51,6 +51,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import io.github.shizukajiku.imagewatch.domain.ImageStatus
 import io.github.shizukajiku.imagewatch.ui.components.AppSvg
+import io.github.shizukajiku.imagewatch.ui.components.IwIconButton
+import io.github.shizukajiku.imagewatch.ui.components.Pill
 import io.github.shizukajiku.imagewatch.ui.components.SvgIcon
 import io.github.shizukajiku.imagewatch.ui.theme.IconSize
 import io.github.shizukajiku.imagewatch.ui.theme.Layout
@@ -61,6 +63,7 @@ import io.github.shizukajiku.imagewatch.ui.theme.Space
 import io.github.shizukajiku.imagewatch.ui.theme.TabularNums
 import io.github.shizukajiku.imagewatch.ui.theme.TypeScale
 import io.github.shizukajiku.imagewatch.ui.theme.focusRing
+import io.github.shizukajiku.imagewatch.ui.theme.hairline
 import io.github.shizukajiku.imagewatch.ui.theme.mutedText
 import io.github.shizukajiku.imagewatch.ui.theme.statusColors
 import kotlinx.coroutines.delay
@@ -114,7 +117,7 @@ private fun RowCard(
                 content = content,
             )
             if (expanded && detail != null) {
-                HorizontalDivider(color = MaterialTheme.colorScheme.surfaceVariant)
+                HorizontalDivider(color = hairline(LocalIsDark.current))
                 detail()
             }
         }
@@ -174,24 +177,16 @@ private fun RowScope.SkipAndPillCell(skip: String, pillText: String, pillBackgro
             style = TabularNums,
             modifier = Modifier.width(Layout.rowSkip).padding(end = Space.sm),
         )
-        Surface(
-            color = pillBackground,
-            shape = RoundedCornerShape(Radius.pill),
-            modifier = Modifier.width(Layout.rowPill),
-        ) {
-            Text(
-                pillText,
-                color = pillForeground,
-                fontFamily = FontFamily.Monospace,
-                fontWeight = FontWeight.Bold,
-                fontSize = TypeScale.meta,
-                textAlign = TextAlign.Center,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                style = TabularNums,
-                modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
-            )
-        }
+        Pill(
+            text = pillText,
+            containerColor = pillBackground,
+            contentColor = pillForeground,
+            width = Layout.rowPill,
+            contentPadding = PaddingValues(vertical = 6.dp),
+            fontFamily = FontFamily.Monospace,
+            fontWeight = FontWeight.Bold,
+            fontSize = TypeScale.meta,
+        )
     }
 }
 
@@ -206,26 +201,6 @@ private fun RowScope.ActionsCell(chip: @Composable () -> Unit, menu: @Composable
     ) {
         Box(Modifier.width(Layout.rowChip), contentAlignment = Alignment.Center) { chip() }
         menu()
-    }
-}
-
-@Composable
-private fun ActionChip(text: String, background: Color, foreground: Color, onClick: () -> Unit) {
-    Surface(
-        color = background,
-        shape = RoundedCornerShape(Radius.pill),
-        modifier = Modifier.fillMaxWidth().focusRing(Radius.pill),
-        onClick = onClick,
-    ) {
-        Text(
-            text,
-            color = foreground,
-            fontWeight = FontWeight.SemiBold,
-            fontSize = TypeScale.meta,
-            textAlign = TextAlign.Center,
-            maxLines = 1,
-            modifier = Modifier.padding(vertical = Space.sm - 1.dp),
-        )
     }
 }
 
@@ -258,17 +233,37 @@ private fun RowDetail(row: ImageRowState, onRefresh: () -> Unit, onToggleSilence
             horizontalArrangement = Arrangement.spacedBy(Space.sm),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            DetailPill("Comprobar ahora", onRefresh)
-            DetailPill(if (copied) "Copiado" else "Copiar referencia") {
-                clipboard.setText(AnnotatedString(row.registry))
-                copiedAt = Clock.System.now().toEpochMilliseconds()
-            }
-            DetailPill(if (row.muted) "Reactivar avisos" else "Silenciar avisos", onToggleSilence)
+            Pill(
+                text = "Comprobar ahora",
+                containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                onClick = onRefresh,
+                contentPadding = PaddingValues(horizontal = Space.md, vertical = Space.xs + 2.dp),
+            )
+            Pill(
+                text = if (copied) "Copiado" else "Copiar referencia",
+                containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                onClick = {
+                    clipboard.setText(AnnotatedString(row.registry))
+                    copiedAt = Clock.System.now().toEpochMilliseconds()
+                },
+                contentPadding = PaddingValues(horizontal = Space.md, vertical = Space.xs + 2.dp),
+            )
+            Pill(
+                text = if (row.muted) "Reactivar avisos" else "Silenciar avisos",
+                containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                onClick = onToggleSilence,
+                leadingIcon = if (row.muted) AppSvg.BELL else AppSvg.BELL_OFF,
+                contentPadding = PaddingValues(horizontal = Space.md, vertical = Space.xs + 2.dp),
+            )
             Spacer(Modifier.weight(1f))
             Surface(
                 color = MaterialTheme.colorScheme.errorContainer,
                 shape = RoundedCornerShape(Radius.pill),
                 onClick = onDelete,
+                modifier = Modifier.focusRing(Radius.pill),
             ) {
                 Row(
                     Modifier.padding(horizontal = Space.md, vertical = Space.xs + 2.dp),
@@ -299,22 +294,6 @@ private fun RowScope.DetailField(label: String, value: String) {
             style = TabularNums,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
-        )
-    }
-}
-
-@Composable
-private fun DetailPill(text: String, onClick: () -> Unit) {
-    Surface(
-        color = MaterialTheme.colorScheme.surfaceVariant,
-        shape = RoundedCornerShape(Radius.pill),
-        onClick = onClick,
-    ) {
-        Text(
-            text,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            fontSize = TypeScale.meta,
-            modifier = Modifier.padding(horizontal = Space.md, vertical = Space.xs + 2.dp),
         )
     }
 }
@@ -359,11 +338,14 @@ fun PendingRow(
         SkipAndPillCell("", row.remote, palette.background, palette.foreground)
         ActionsCell(
             chip = {
-                ActionChip(
-                    "Visto",
-                    MaterialTheme.colorScheme.primaryContainer,
-                    MaterialTheme.colorScheme.onPrimaryContainer,
-                    onAcknowledge,
+                Pill(
+                    text = "Visto",
+                    containerColor = MaterialTheme.colorScheme.primaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                    onClick = onAcknowledge,
+                    leadingIcon = AppSvg.CHECK,
+                    width = Layout.rowChip,
+                    contentPadding = PaddingValues(vertical = Space.sm - 1.dp),
                 )
             },
             menu = { RowMenu(row, onAcknowledge, onRefresh, onToggleSilence, onDelete) },
@@ -405,11 +387,13 @@ fun ErrorRow(
             SkipAndPillCell("", "Error", palette.background, palette.foreground)
             ActionsCell(
                 chip = {
-                    ActionChip(
-                        "Reintentar",
-                        MaterialTheme.colorScheme.surfaceVariant,
-                        MaterialTheme.colorScheme.onSurfaceVariant,
-                        onRefresh,
+                    Pill(
+                        text = "Reintentar",
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                        contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                        onClick = onRefresh,
+                        width = Layout.rowChip,
+                        contentPadding = PaddingValues(vertical = Space.sm - 1.dp),
                     )
                 },
                 menu = { RowMenu(row, onAcknowledge = null, onRefresh, onToggleSilence, onDelete) },
@@ -458,7 +442,7 @@ fun OkRow(
     val alpha = if (pulsing) unverifiedPulseAlpha() else 1f
     RowCard(
         background = MaterialTheme.colorScheme.surface,
-        borderColor = MaterialTheme.colorScheme.surfaceVariant,
+        borderColor = hairline(LocalIsDark.current),
         modifier = modifier.alpha(alpha).then(emphasisModifier(row)),
         expanded = expanded,
         onToggleExpand = onToggleExpand,
@@ -512,7 +496,7 @@ private fun CheckingRow(row: ImageRowState, modifier: Modifier = Modifier) {
         )
     RowCard(
         background = MaterialTheme.colorScheme.surface,
-        borderColor = MaterialTheme.colorScheme.surfaceVariant,
+        borderColor = hairline(LocalIsDark.current),
         modifier = modifier.alpha(CHECKING_ALPHA),
     ) {
         NameCell(row.name, row.registry, MaterialTheme.colorScheme.onSurface)
@@ -524,7 +508,7 @@ private fun CheckingRow(row: ImageRowState, modifier: Modifier = Modifier) {
             verticalAlignment = Alignment.CenterVertically,
         ) {
             SvgIcon(
-                AppSvg.REFRESH,
+                AppSvg.SPINNER,
                 MaterialTheme.colorScheme.onSurfaceVariant,
                 Modifier.size(IconSize.sm).rotate(rotation),
             )
@@ -547,9 +531,7 @@ private fun RowMenu(
     val clipboard = LocalClipboardManager.current
 
     Box {
-        IconButton({ expanded = true }, modifier = Modifier.size(Layout.rowKebab).focusRing(Radius.sm)) {
-            SvgIcon(AppSvg.KEBAB, MaterialTheme.colorScheme.onSurfaceVariant, Modifier.size(IconSize.md))
-        }
+        IwIconButton(AppSvg.KEBAB, { expanded = true }, boxSize = Layout.rowKebab, iconSize = IconSize.md)
         DropdownMenu(expanded, { expanded = false }) {
             if (onAcknowledge != null) {
                 DropdownMenuItem(
