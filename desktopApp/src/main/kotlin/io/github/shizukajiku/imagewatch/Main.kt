@@ -68,6 +68,7 @@ import io.github.shizukajiku.imagewatch.ui.toast.ToastNotificationPort
 import io.github.shizukajiku.imagewatch.ui.toast.ToastState
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -76,6 +77,7 @@ import okio.FileSystem
 import okio.Path
 import okio.Path.Companion.toPath
 import org.slf4j.LoggerFactory
+import kotlin.concurrent.Volatile
 import kotlin.time.Clock
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
@@ -195,7 +197,18 @@ private class Wiring {
     )
 
     private val downloader = UpdateDownloader(updateHttpClient, updatesDir)
-    private val installer = MsiUpdateInstaller(updatesDir)
+
+    // La ruta del lanzador vivo: el upgrade del MSI reemplaza en la misma carpeta -incluida una
+    // elegida con dirChooser-, así que aquí es también la ruta tras actualizar. En `gradlew run`
+    // es la JVM, pero ahí `installKind` nunca es MSI y `applyUpdate` no llega a usarla.
+    private val installer = MsiUpdateInstaller(
+        updatesDir,
+        installedExe = ProcessHandle.current().info().command().orElse(null),
+    )
+
+    /** Impide que dos clics en «Actualizar» lancen dos descargas contra el mismo `.part`. */
+    @Volatile
+    private var updateJob: Job? = null
 
     init {
         val seed = configFromEnvironment()
@@ -336,7 +349,13 @@ private class Wiring {
         val manifest = updateService.pendingManifest ?: return
         when (updateService.phase.value) {
             is UpdatePhase.Available, is UpdatePhase.Failed -> {
-                imagesScope.launch {
+                // Un clic doble mientras la petición del checksum sigue en vuelo dejaría la fase en
+                // `Available` y lanzaría dos descargas contra el mismo `.part`. Se corta con el job
+                // vivo y se pasa a `Downloading` de forma síncrona -antes de lanzar la corrutina-,
+                // así el segundo clic ya no ve `Available`.
+                if (updateJob?.isActive == true) return
+                updateService.reportDownloadProgress(null)
+                updateJob = imagesScope.launch {
                     when (val result = downloader.download(manifest) { updateService.reportDownloadProgress(it) }) {
                         is DownloadResult.Ready -> updateService.markReadyToApply()
                         is DownloadResult.Failed -> updateService.reportDownloadFailed(result.reason)

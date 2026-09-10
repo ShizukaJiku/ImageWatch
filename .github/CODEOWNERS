@@ -1,0 +1,9 @@
+# Con la regla «Require review from Code Owners» activa en la protección de main, cualquier
+# PR que toque estas rutas necesita la aprobación de @ShizukaJiku para poder fusionarse.
+
+# Toda la configuración de CI/CD y del repositorio.
+/.github/          @ShizukaJiku
+
+# Empaquetado, firma y versión de entrega.
+/desktopApp/build.gradle.kts   @ShizukaJiku
+/gradle.properties             @ShizukaJiku

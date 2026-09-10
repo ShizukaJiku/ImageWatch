@@ -6,20 +6,24 @@ import kotlin.test.assertEquals
 class InstallKindTest {
 
     @Test
-    fun `clave de desinstalacion presente es MSI`() {
-        val kind = detectInstallKind(RegistryReader { path -> path.contains("Uninstall") })
+    fun `entrada de desinstalacion de ImageWatch es MSI`() {
+        val kind = detectInstallKind(
+            RegistryReader { root, term ->
+                root == WindowsRegistryReader.UNINSTALL_ROOT && term == "ImageWatch"
+            },
+        )
         assertEquals(InstallKind.MSI, kind)
     }
 
     @Test
-    fun `sin clave de desinstalacion es PORTABLE`() {
-        val kind = detectInstallKind(RegistryReader { false })
+    fun `sin entrada de desinstalacion es PORTABLE`() {
+        val kind = detectInstallKind(RegistryReader { _, _ -> false })
         assertEquals(InstallKind.PORTABLE, kind)
     }
 
     @Test
     fun `si leer el registro lanza, es PORTABLE`() {
-        val kind = detectInstallKind(RegistryReader { error("reg.exe petó") })
+        val kind = detectInstallKind(RegistryReader { _, _ -> error("reg.exe petó") })
         assertEquals(InstallKind.PORTABLE, kind)
     }
 }

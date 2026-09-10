@@ -1,11 +1,10 @@
 name: Tests
 
-# Red de seguridad continua, separada del pipeline de release. Corre en cada pull
-# request -el feedback de las ramas de trabajo llega por ahí- y en cada push a
-# main, para cubrir también un push directo que no pase por PR.
+# Red de seguridad de las ramas de trabajo: corre en cada pull request. **No** corre en
+# push a main -allí lo cubre el job `test` de `release.yml`, sobre el commit fusionado
+# exacto que se va a publicar-. Con la rama main protegida (solo se entra por PR), este
+# workflow es la única puerta que hace falta antes de fusionar.
 on:
-  push:
-    branches: [main]
   pull_request:
 
 concurrency:

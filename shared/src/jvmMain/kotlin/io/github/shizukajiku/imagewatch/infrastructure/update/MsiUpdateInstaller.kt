@@ -33,8 +33,15 @@ class MsiUpdateInstaller(
     private val updatesDir: Path,
     private val fileSystem: FileSystem = FileSystem.SYSTEM,
     private val launcher: ProcessLauncher = RealProcessLauncher,
-    private val installedExe: String = defaultInstalledExe(),
+    /**
+     * Ruta del ejecutable a relanzar tras instalar. El upgrade del MSI reemplaza los ficheros en
+     * la **misma** carpeta -incluida la que el usuario haya elegido con `dirChooser`-, así que lo
+     * correcto es pasar aquí la ruta del lanzador vivo (`ProcessHandle.current().info().command()`).
+     * `null` cae al valor por defecto bajo `%LOCALAPPDATA%`.
+     */
+    installedExe: String? = null,
 ) {
+    private val installedExe: String = installedExe ?: defaultInstalledExe()
     private val log = LoggerFactory.getLogger(MsiUpdateInstaller::class.java)
 
     fun apply(msi: Path, appPid: Long): Result<Unit> = runCatching {

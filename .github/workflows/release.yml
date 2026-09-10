@@ -17,8 +17,11 @@ concurrency:
 
 jobs:
   test:
-    name: Tests
+    name: Formato y tests
     runs-on: ubuntu-latest
+    # La misma comprobación completa que `tests.yml` corre en el PR, aquí sobre el commit
+    # fusionado exacto que se va a publicar -que el PR nunca vio-. Es la única corrida de
+    # test en `main`: `tests.yml` ya no se dispara en push.
     steps:
       - name: Descargar el repositorio
         uses: actions/checkout@v4
@@ -35,8 +38,17 @@ jobs:
       - name: Dar permiso de ejecución a gradlew
         run: chmod +x gradlew
 
+      - name: Formato (spotless)
+        run: ./gradlew spotlessCheck --no-daemon
+
       - name: Tests
         run: ./gradlew :shared:jvmTest --no-daemon
+
+      - name: Cobertura del núcleo (kover)
+        run: ./gradlew :shared:koverVerify --no-daemon
+
+      - name: Compilar el módulo de escritorio
+        run: ./gradlew :desktopApp:compileKotlin --no-daemon
 
   build:
     name: Instalador y Release
