@@ -10,14 +10,44 @@ Descarga desde la [última Release](https://github.com/ShizukaJiku/ImageWatch/re
 
 - **`ImageWatch-X.Y.Z.msi`** — instalador de Windows. Sin permisos de administrador:
   instala en el perfil del usuario, con acceso directo y entrada en el menú Inicio.
-  Actualizar conserva tu configuración y tu lista de imágenes.
+  Actualizar conserva tu configuración y tu lista de imágenes. **Se actualiza solo**: la
+  app avisa cuando hay una versión más nueva y la instala desde Ajustes, sin descargar
+  nada a mano (ver [Actualizaciones automáticas](#actualizaciones-automáticas)).
 - **`ImageWatch-X.Y.Z-portable.zip`** — versión sin instalar. Descomprime y ejecuta
-  `ImageWatch.exe`.
+  `ImageWatch.exe`. No se actualiza sola: para pasar a una versión nueva, descarga el zip
+  y reemplaza la carpeta.
 
 Ninguno necesita tener Java instalado: llevan su propio runtime.
 
 Al primer arranque la lista está vacía. Abre Ajustes (el engranaje de la cabecera), pon la
 URL del registry y añade las imágenes que quieras vigilar.
+
+## Actualizaciones automáticas
+
+Solo para la instalación **MSI**. La portable no se actualiza sola.
+
+La app consulta la [API de Releases de GitHub](https://api.github.com/repos/ShizukaJiku/ImageWatch/releases/latest)
+al arrancar, una vez al día mientras corre, y cuando pulsas **«Buscar actualizaciones»**
+en Ajustes → sección **Actualizaciones**. Sin token; el límite anónimo de GitHub sobra
+para esa frecuencia.
+
+Cuando hay una versión más nueva, la sección muestra el número y las notas del Release.
+Al pulsar **«Actualizar ahora»**:
+
+1. Descarga `ImageWatch-X.Y.Z.msi` y su `ImageWatch-X.Y.Z.msi.sha256` a
+   `~/.notifier/updates/`.
+2. Verifica el SHA-256 **al vuelo**. Si no coincide, borra la descarga y no sigue.
+3. Con **«Instalar y reiniciar»** (tras confirmar), la app se cierra, `msiexec` aplica el
+   MSI en sitio —sin pedir permisos de administrador— y la app vuelve a abrirse en la
+   versión nueva. Tu configuración y tu lista de imágenes (`~/.notifier/`) no se tocan.
+
+Si algo falla —sin red, GitHub caído, checksum que no cuadra, `msiexec` con error— la
+instalación anterior queda intacta y el motivo aparece en la sección de Ajustes; el botón
+permite reintentar.
+
+**Seguridad.** El cliente HTTP del actualizador **siempre valida el certificado TLS de
+GitHub**, aunque tengas `IGNORE_SSL_ERRORS=true` (ese interruptor es solo para tu registry
+interno). El MSI se comprueba contra el checksum publicado en el mismo Release.
 
 ## Compilar desde el código
 
@@ -113,12 +143,22 @@ presentes; sin ellos publica sin firmar.
 
 Dos workflows en `.github/workflows/`:
 
-- **`tests.yml`** — en cada pull request y en cada push a `main`. Formato (`spotlessCheck`),
-  `:shared:jvmTest`, cobertura (`:shared:koverVerify`) y compilación de `:desktopApp`.
-- **`release.yml`** — al fusionar a `main`. Lee `imagewatch.version` de `gradle.properties`:
-  si el tag `vX.Y.Z` **no existe todavía**, crea el tag y publica un Release de GitHub con el
-  MSI y el zip portable como assets, con notas autogeneradas. Fusionar sin subir la versión
-  no hace nada. **Publicar una versión = subir `imagewatch.version` en el PR que la cierra.**
+- **`tests.yml`** — **solo en pull request**. Formato (`spotlessCheck`), `:shared:jvmTest`,
+  cobertura (`:shared:koverVerify`) y compilación de `:desktopApp`. No corre en push a
+  `main` para no repetir el trabajo: allí lo cubre `release.yml`.
+- **`release.yml`** — al fusionar a `main`. Su job `test` repite la misma comprobación
+  completa sobre el commit fusionado exacto; luego lee `imagewatch.version` de
+  `gradle.properties` y, si el Release `vX.Y.Z` **no existe todavía**, empaqueta, verifica
+  el runtime, firma el MSI (si hay certificado) y publica un Release de GitHub creando el
+  tag en el mismo paso. Assets: el MSI, su `ImageWatch-X.Y.Z.msi.sha256` (lo usa la
+  autoactualización) y el zip portable, con notas autogeneradas. Fusionar sin subir la
+  versión no hace nada. **Publicar una versión = subir `imagewatch.version` en el PR que
+  la cierra.**
+
+`main` está protegida por un *ruleset*: todo entra por PR, con una aprobación del
+propietario (`CODEOWNERS`) y el check `Formato y tests` en verde; sin push directo ni
+force-push. El propietario fusiona sus propios PR por la excepción de administrador
+(GitHub no deja aprobar el PR propio).
 
 ## Configuración
 
@@ -207,6 +247,7 @@ Todo en `~/.notifier/`:
 | `tracked-images.json` | Lista de imágenes vigiladas |
 | `config.json` | Configuración editable desde la pantalla de ajustes |
 | `imagewatch.log` | Registro, con rotación diaria y tope de 20 MB |
+| `updates/` | Carpeta temporal de la autoactualización (MSI descargado + checksum). Se vacía al empezar cada descarga |
 
 El registro solo anota lo que **cambia** —versiones nuevas, imágenes que empiezan a
 fallar, reconocimientos—, no un renglón por ciclo.

@@ -108,7 +108,9 @@ object Layout {
     // Fila de la bandeja
     val rowAge = 104.dp
     val rowSkip = 44.dp
-    val rowPill = 104.dp
+
+    // Ancho para versiones largas del tipo `1.20.1.SNAPSHOT` / `1.1.20.RELEASE` sin recortar.
+    val rowPill = 152.dp
     val rowChip = 88.dp
     val rowKebab = 30.dp
     val rowPadH = 14.dp

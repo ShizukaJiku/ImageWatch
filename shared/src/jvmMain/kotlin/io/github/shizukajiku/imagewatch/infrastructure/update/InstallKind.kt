@@ -7,25 +7,35 @@ enum class InstallKind { MSI, PORTABLE }
 /** Lee el registro de Windows. Inyectable para test. */
 fun interface RegistryReader {
     /**
-     * `true` si `term` aparece como dato exacto de algún valor en el subárbol de `root`
-     * (`reg query <root> /s /f <term> /d /e`). Puede lanzar; el llamador lo trata como "no está".
+     * `true` si `displayName` aparece como dato exacto de algún valor -normalmente `DisplayName`-
+     * bajo alguna de las ramas de «Programas instalados». Puede lanzar; el llamador lo trata como
+     * "no está".
      */
-    fun subtreeContains(root: String, term: String): Boolean
+    fun uninstallEntryExists(displayName: String): Boolean
 }
 
 /**
  * Windows Installer registra el MSI de jpackage bajo una subclave con el *product code* (un GUID),
- * no bajo un nombre legible: buscar `Uninstall\ImageWatch` no encuentra nada. Lo que sí es estable
- * es el `DisplayName`, que jpackage fija al `packageName` («ImageWatch»). Se busca ese dato en todo
- * el subárbol.
+ * no bajo un nombre legible, así que se busca por `DisplayName` -que jpackage fija al `packageName`,
+ * «ImageWatch»- en todo el subárbol.
  *
- * Solo `HKCU`: el instalador es por usuario (`perUserInstall = true`), así que la entrada de
- * desinstalación vive en la rama del usuario, no en `HKLM`.
+ * Se miran **tres** ramas: aunque el instalador es por usuario y deja los ficheros en
+ * `%LOCALAPPDATA%`, jpackage genera un MSI cuya entrada de «Programas y características» acaba en
+ * `HKLM` -comprobado en una instalación real de la 1.0.3-. `HKCU` y `WOW6432Node` se cubren por si
+ * una versión de jpackage o WiX cambia de sitio.
  */
 object WindowsRegistryReader : RegistryReader {
-    const val UNINSTALL_ROOT = "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall"
+    private val UNINSTALL_ROOTS = listOf(
+        "HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Uninstall",
+        "HKLM\\SOFTWARE\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall",
+        "HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall",
+    )
 
-    override fun subtreeContains(root: String, term: String): Boolean {
+    override fun uninstallEntryExists(displayName: String): Boolean =
+        UNINSTALL_ROOTS.any { root -> matchesExactData(root, displayName) }
+
+    /** `reg query <root> /s /f <term> /d /e` -recursivo, dato exacto-: sale 0 si algo casa. */
+    private fun matchesExactData(root: String, term: String): Boolean {
         val process = ProcessBuilder("reg", "query", root, "/s", "/f", term, "/d", "/e")
             .redirectOutput(ProcessBuilder.Redirect.DISCARD)
             .redirectError(ProcessBuilder.Redirect.DISCARD)
@@ -37,16 +47,12 @@ object WindowsRegistryReader : RegistryReader {
 private val log = LoggerFactory.getLogger("InstallKind")
 
 /**
- * `MSI` si hay una entrada de desinstalación de ImageWatch en `Uninstall`; en cualquier otro caso
- * -no hay entrada, o `reg.exe` falla- `PORTABLE`. Conservador a propósito: no ejecutar un MSI si no
- * sabemos que esto vino de un MSI.
+ * `MSI` si hay una entrada de desinstalación de ImageWatch; en cualquier otro caso -no hay entrada,
+ * o `reg.exe` falla- `PORTABLE`. Conservador a propósito: no ejecutar un MSI si no sabemos que esto
+ * vino de un MSI.
  */
 fun detectInstallKind(reader: RegistryReader = WindowsRegistryReader): InstallKind = try {
-    if (reader.subtreeContains(WindowsRegistryReader.UNINSTALL_ROOT, DISPLAY_NAME)) {
-        InstallKind.MSI
-    } else {
-        InstallKind.PORTABLE
-    }
+    if (reader.uninstallEntryExists(DISPLAY_NAME)) InstallKind.MSI else InstallKind.PORTABLE
 } catch (e: Exception) {
     log.warn("No se pudo determinar el tipo de instalación; se asume portable", e)
     InstallKind.PORTABLE
