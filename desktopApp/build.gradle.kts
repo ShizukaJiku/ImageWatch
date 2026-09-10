@@ -6,6 +6,45 @@ plugins {
     alias(libs.plugins.composeCompiler)
 }
 
+// La version de entrega, la misma que packageVersion, generada como constante para que
+// UpdateService sepa contra que comparar el ultimo Release de GitHub.
+val imageWatchVersion = (project.findProperty("imagewatch.version") as String?) ?: "0.0.0"
+
+@CacheableTask
+abstract class GenerateBuildInfo : DefaultTask() {
+    @get:Input
+    abstract val version: Property<String>
+
+    @get:OutputDirectory
+    abstract val outputDir: DirectoryProperty
+
+    @TaskAction
+    fun generate() {
+        val pkgDir = outputDir.get().asFile.resolve("io/github/shizukajiku/imagewatch")
+        pkgDir.mkdirs()
+        pkgDir.resolve("BuildInfo.kt").writeText(
+            """
+            |package io.github.shizukajiku.imagewatch
+            |
+            |/** Generado por Gradle desde `imagewatch.version`. No editar a mano. */
+            |internal object BuildInfo {
+            |    const val VERSION: String = "${version.get()}"
+            |}
+            |
+            """.trimMargin(),
+        )
+    }
+}
+
+val generateBuildInfo by tasks.registering(GenerateBuildInfo::class) {
+    version.set(imageWatchVersion)
+    outputDir.set(layout.buildDirectory.dir("generated/buildinfo"))
+}
+
+kotlin.sourceSets.named("main") {
+    kotlin.srcDir(generateBuildInfo)
+}
+
 dependencies {
     implementation(project(":shared"))
 
