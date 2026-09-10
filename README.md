@@ -41,9 +41,14 @@ Al pulsar **«Actualizar ahora»**:
    MSI en sitio —sin pedir permisos de administrador— y la app vuelve a abrirse en la
    versión nueva. Tu configuración y tu lista de imágenes (`~/.notifier/`) no se tocan.
 
-Si algo falla —sin red, GitHub caído, checksum que no cuadra, `msiexec` con error— la
-instalación anterior queda intacta y el motivo aparece en la sección de Ajustes; el botón
-permite reintentar.
+Si falla el chequeo o la descarga —sin red, GitHub caído, checksum que no cuadra— el
+motivo aparece en la sección de Ajustes y el botón permite reintentar sin más.
+
+Si falla `msiexec` (código ≠ 0, o cancelas la barra de progreso), la app ya se ha
+cerrado: la instalación anterior queda **intacta** —Windows Installer revierte— pero no se
+reabre sola. Ábrela desde el acceso directo y reintenta desde Ajustes. El código de salida
+de `msiexec` queda en `~/.notifier/updates/apply-update.log` (se borra en el siguiente
+intento de actualización).
 
 **Seguridad.** El cliente HTTP del actualizador **siempre valida el certificado TLS de
 GitHub**, aunque tengas `IGNORE_SSL_ERRORS=true` (ese interruptor es solo para tu registry
