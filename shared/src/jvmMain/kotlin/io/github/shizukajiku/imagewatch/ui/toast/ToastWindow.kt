@@ -14,6 +14,7 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -54,6 +55,7 @@ import androidx.compose.ui.window.WindowPosition
 import androidx.compose.ui.window.rememberWindowState
 import io.github.shizukajiku.imagewatch.domain.ImageStatus
 import io.github.shizukajiku.imagewatch.ui.components.AppSvg
+import io.github.shizukajiku.imagewatch.ui.components.Pill
 import io.github.shizukajiku.imagewatch.ui.components.SvgIcon
 import io.github.shizukajiku.imagewatch.ui.theme.Elevation
 import io.github.shizukajiku.imagewatch.ui.theme.IconSize
@@ -256,26 +258,18 @@ private fun ToastCard(
                         }
                     }
                     if (toast.action.isNotEmpty()) {
-                        Surface(
-                            color = MaterialTheme.colorScheme.primaryContainer,
-                            shape = RoundedCornerShape(Radius.pill),
+                        Pill(
+                            text = toast.action,
+                            containerColor = MaterialTheme.colorScheme.primaryContainer,
+                            contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
                             onClick = {
                                 onAction()
                                 saliendoManual = true
                             },
-                            modifier = Modifier.width(Layout.toastAction),
-                        ) {
-                            Text(
-                                toast.action,
-                                color = MaterialTheme.colorScheme.onPrimaryContainer,
-                                fontWeight = FontWeight.SemiBold,
-                                fontSize = TypeScale.caption,
-                                textAlign = TextAlign.Center,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.padding(vertical = Space.xs),
-                            )
-                        }
+                            width = Layout.toastAction,
+                            contentPadding = PaddingValues(vertical = Space.xs),
+                            fontSize = TypeScale.caption,
+                        )
                     }
                     IconButton({ saliendoManual = true }, Modifier.size(Layout.toastClose)) {
                         SvgIcon(AppSvg.CLOSE, MaterialTheme.colorScheme.onSurfaceVariant, Modifier.size(IconSize.sm))
