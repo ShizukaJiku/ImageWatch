@@ -1,0 +1,11 @@
+# Con «Require review from Code Owners» activo en la protección de main, todo PR necesita la
+# aprobación de @ShizukaJiku para poder fusionarse. El propietario fusiona sus propios PR por
+# la excepción de administrador (no se puede aprobar el PR propio).
+
+# Todo el repositorio.
+*                              @ShizukaJiku
+
+# Rutas sensibles, explícitas para dejar constancia: CI/CD, empaquetado y versión de entrega.
+/.github/                      @ShizukaJiku
+/desktopApp/build.gradle.kts   @ShizukaJiku
+/gradle.properties             @ShizukaJiku
