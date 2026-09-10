@@ -55,6 +55,101 @@ todo el rediseño).
    del usuario, con la lista completa en
    `docs/superpowers/plans/2026-09-09-imagewatch-rediseno-fase-7.md` (Task 5, Step 4).
 
+## Instalador, autostart y pipelines (2026-09-09, posterior al refactor de componentes)
+
+Trabajo de entrega, no de rediseño visual. **Sin commitear todavía** (rama
+`feature/rediseno-fase-4-ajustes`).
+
+- **Ventana**: arranca a 1120×720 (antes el default 800×600 de Compose; nunca se configuró).
+- **Autostart**: `main(args)` ahora lee `--minimized`. Arranque normal (atajo, `gradlew run`) abre
+  la ventana; arranque por la clave `Run` del registro (que añade `--minimized`) va a la bandeja.
+  Antes el flag era código muerto y la app arrancaba siempre oculta. Subtítulo del toggle de
+  Ajustes reescrito.
+- **Icono del instalador**: `desktopApp/icons/ImageWatch.ico` (7 tamaños, PNG embebido) generado
+  de `AppIconPainter` con `./gradlew :desktopApp:generateIcon` (tarea fuera del build; el `.ico` se
+  commitea). `build.gradle.kts` → `windows { iconFile }`.
+- **Formatos**: `targetFormats(Msi, AppImage)`. El portable es la carpeta app-image, se zipea.
+- **Versión de entrega**: `gradle.properties` → `imagewatch.version` (hoy `1.0.0`), la lee
+  `packageVersion`. Subir ahí en el PR que cierra cada versión.
+- **Instalación limpia, sin datos de prueba**: la app empaquetada detecta `jpackage.app-path` y
+  arranca sin simulación y sin imágenes sembradas. `EmptyImageSource` (nuevo, `commonMain`) cubre
+  "sin URL todavía" sin construir un `HttpImageSource("")`. Se quitó el `check(...)` de arranque
+  que exigía URL o simulación. En `gradlew run` sigue arrancando en simulación con las 4 imágenes.
+- **Actualización conserva datos**: ya era cierto (`~/.notifier/` en el perfil, el MSI no lo toca);
+  documentado en README.
+- **Hooks pre-commit + `.denylist.local` eliminados**: `scripts/` borrado, `.gitignore` sin
+  `*.local`, README sin las secciones de hooks/secretos. `.denylist.local` queda en disco como
+  untracked — borrarlo a mano.
+- **`tests.yml`**: `push` solo en `main` (+ PR), y añade `:desktopApp:compileKotlin` (antes CI
+  nunca compilaba el módulo de escritorio).
+- **`release.yml`**: dispara al fusionar a `main`. Job `tag` lee `imagewatch.version`; si el tag
+  `vX.Y.Z` no existe, lo crea y `build` publica un Release con el MSI y el zip portable. Fusionar
+  sin subir la versión no hace nada. Paso de firma opcional (`SIGN_PFX_BASE64` /
+  `SIGN_PFX_PASSWORD`), no-op sin los secretos.
+
+## Refactor de componentes reutilizables (2026-09-09, posterior a las 7 fases)
+
+Tras el repaso visual del usuario con capturas comparadas contra el diseño real (vía `DesignSync`
+MCP sobre `Blueprint.dc.html`, `Bandeja.dc.html`, `Ajustes.dc.html`, `Aviso.dc.html`,
+`Medidas.dc.html`), salieron defectos de fidelidad que un parche suelto no iba a resolver bien:
+iconos de más/de menos, píldoras ovaladas en vez de con esquinas de píldora real, `hairline` vs
+`surfaceVariant` confundidos, texto "Agregar Imagen" que debía ser solo "Agregar". El usuario pidió
+explícitamente un plan completo con componentes reutilizables/configurables en vez de arreglos
+puntuales.
+
+- **Spec:** `docs/superpowers/specs/2026-09-09-imagewatch-componentes-reutilizables-design.md`.
+- **Plan:** `docs/superpowers/plans/2026-09-09-imagewatch-componentes-reutilizables.md` (10 tareas,
+  hecho inline, sin subagentes).
+- **Rama:** `feature/componentes-reutilizables`, fusionada (fast-forward) a
+  `feature/rediseno-fase-4-ajustes` y borrada.
+
+**Componentes nuevos** (`ui/components/`): `Pill.kt`, `IwIconButton.kt`, `SurfaceCard.kt`.
+Reemplazan 7+ píldoras ad-hoc (`HeaderChip`, `ActionChip`, `DetailPill`, botones sueltos de
+Ajustes/diálogo/toast) y 4+ botones circulares (`IconButton` sueltos con fondo/anillo manual).
+
+**Bugs de fidelidad corregidos de paso:**
+- Anillo de foco ovalado sobre chips no cuadrados (`FocusRing.kt`): `drawRoundRect` clampa el radio
+  por eje, a diferencia de `RoundedCornerShape`; ahora se clampa a mano a `min(ancho,alto)/2`.
+- Token `hairline()` nuevo (`Colors.kt`): separa borde/divisor (`--hair`) de fondo de píldora
+  (`--surfv`) — antes ambos usaban `surfaceVariant` y en tema claro salía el color equivocado.
+- Icono de doble-check que sobraba y de reload que faltaba: "Ver todas"/"Visto" ahora llevan
+  `CHECK_ALL`/`CHECK`; "Reintentar" (cabecera de sección de error) ahora lleva `REFRESH`, que
+  faltaba; "Silenciar/Reactivar avisos" del detalle de fila ahora lleva `BELL`/`BELL_OFF`, que
+  faltaba. Icono nuevo `SPINNER` (arco simple) para la fila en comprobación, sustituye al
+  `REFRESH` (flecha completa) que no es el que pide el diseño.
+- Texto de la cabecera corregido a "Agregar" (sin "imagen") — el de `EmptyState` sí era "Agregar
+  imagen" y se queda igual, son botones distintos.
+
+**Excepciones deliberadas, documentadas y de bajo riesgo** (no migradas a los componentes nuevos):
+1. Botón "Quitar de la lista" del detalle de fila (`ImageRow.kt`): combinación icono+texto que no
+   encaja en la API simple de `Pill`; se queda como `Surface` propio, pero ganó `.focusRing(...)`
+   que no tenía.
+2. Botón de cerrar de `TitleBar.kt`: no migrado a `IwIconButton` porque su ancho (46dp) no coincide
+   con la altura de la barra (38dp) — saldría una elipse, no un círculo.
+3. Botón de confirmar de `ConfirmDialog.kt`: pasó de ancho mínimo (`widthIn`) a ancho fijo
+   (`Layout.dialogConfirmMin`, 132dp) — solo importa si algún día una etiqueta más larga se trunca.
+
+**Verificación:** `:shared:jvmTest :shared:koverVerify :desktopApp:compileKotlin spotlessCheck`
+verde en cada tarea y en la rama fusionada. `:desktopApp:run` arrancó sin excepción (~90s, matado
+limpio). Sin test de UI automatizado (ver más abajo) — falta confirmación visual del usuario.
+
+**Pendiente de confirmación visual del usuario** sobre la ventana real (no se puede capturar/
+automatizar una ventana nativa de Compose Desktop en este entorno):
+1. Cabecera: ya no hay icono de refrescar ni de doble-check sueltos; quedan buscar, campana,
+   ajustes, "Agregar" (sin "imagen").
+2. Chip "Visto" de una fila pendiente: lleva el check antes del texto.
+3. Enfocar con `Tab` el chip "Visto": el anillo es una píldora limpia, no un óvalo.
+4. Pill "Reintentar" de la cabecera de la sección de error: lleva icono de refrescar.
+5. Detalle de una fila → "Silenciar avisos": lleva icono de campana tachada.
+6. Una fila con comprobación en vuelo: el icono que gira es un arco simple, no una flecha completa.
+7. Tema claro: bordes/divisores (fila «Al día», línea de Ajustes, hairline de la barra de título) se
+   ven ligeramente distintos del fondo de los chips.
+
+**Investigación pendiente, pedida por el usuario, sin empezar:** evaluar Compose Screenshot Testing
+(https://developer.android.com/studio/preview/compose-screenshot-testing) y Roborazzi
+(https://github.com/takahirom/roborazzi) como alternativas para pruebas visuales automatizadas de
+Compose Desktop — hoy no hay ninguna en el proyecto.
+
 ## Puntos abiertos de la fase 6 (el usuario los está revisando)
 
 1. `BELL_HIT_WIDTH = 24.dp` es nombre propio de esta implementación (el spec solo daba el número);
