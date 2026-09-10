@@ -1,19 +1,18 @@
 name: Release
 
-# Se dispara al empujar una etiqueta de versión (v1.2.3). El job de build
-# depende del de test: si algo falla, no se genera ni se publica ningún
-# instalador. El instalador se sube como asset del Release de GitHub, listo
-# para descargar y ejecutar sin pasar por el código fuente.
+# Al fusionar un PR a main (o un push directo a main). Lee `imagewatch.version` de
+# gradle.properties: si su tag `vX.Y.Z` todavía no existe, crea el tag y publica un
+# Release con el instalador MSI y el zip portable. Fusionar sin subir la versión no
+# genera nada.
 on:
   push:
-    tags:
-      - "v*.*.*"
+    branches: [main]
 
 permissions:
   contents: write
 
 concurrency:
-  group: release-${{ github.ref }}
+  group: release-main
   cancel-in-progress: false
 
 jobs:
@@ -39,16 +38,55 @@ jobs:
       - name: Tests
         run: ./gradlew :shared:jvmTest --no-daemon
 
-  build:
-    name: Generar el instalador
+  tag:
+    name: Crear el tag de versión
     needs: test
-    # El empaquetado (jpackage + WiX) produce un MSI, así que el runner tiene
-    # que ser Windows: es el único formato que desktopApp/build.gradle.kts
-    # declara en nativeDistributions.targetFormats.
-    runs-on: windows-latest
+    runs-on: ubuntu-latest
+    outputs:
+      release: ${{ steps.decide.outputs.release }}
+      version: ${{ steps.decide.outputs.version }}
     steps:
       - name: Descargar el repositorio
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Decidir si hay versión nueva y etiquetarla
+        id: decide
+        run: |
+          version=$(sed -n 's/^imagewatch\.version=//p' gradle.properties | tr -d '[:space:]')
+          if [ -z "$version" ]; then
+            echo "Falta imagewatch.version en gradle.properties" >&2
+            exit 1
+          fi
+          tag="v$version"
+          if git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
+            echo "El tag $tag ya existe: nada que publicar."
+            echo "release=false" >> "$GITHUB_OUTPUT"
+          else
+            git config user.name  "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git tag -a "$tag" -m "ImageWatch $version"
+            git push origin "$tag"
+            echo "Etiquetado $tag."
+            echo "release=true"      >> "$GITHUB_OUTPUT"
+            echo "version=$version"  >> "$GITHUB_OUTPUT"
+          fi
+
+  build:
+    name: Instalador y Release
+    needs: tag
+    if: needs.tag.outputs.release == 'true'
+    # jpackage + WiX solo producen MSI en Windows: es el runner obligado.
+    runs-on: windows-latest
+    env:
+      SIGN_PFX_BASE64: ${{ secrets.SIGN_PFX_BASE64 }}
+      SIGN_PFX_PASSWORD: ${{ secrets.SIGN_PFX_PASSWORD }}
+    steps:
+      - name: Descargar el tag recién creado
+        uses: actions/checkout@v4
+        with:
+          ref: v${{ needs.tag.outputs.version }}
 
       - name: Configurar JDK
         uses: actions/setup-java@v4
@@ -62,36 +100,23 @@ jobs:
       - name: Instalar WiX Toolset
         run: choco install wixtoolset -y
 
-      - name: Generar el instalador MSI
+      - name: Empaquetar MSI y portable
         shell: bash
         run: |
           chmod +x gradlew
-          ./gradlew :desktopApp:packageMsi --no-daemon
-
-      - name: Ubicar el instalador generado
-        id: msi
-        shell: bash
-        run: |
-          archivo=$(find desktopApp/build/compose/binaries/main/msi -name '*.msi' -print -quit)
-          if [ -z "$archivo" ]; then
-            echo "No se encontró ningún .msi en desktopApp/build/compose/binaries/main/msi" >&2
-            exit 1
-          fi
-          echo "path=$archivo" >> "$GITHUB_OUTPUT"
+          ./gradlew :desktopApp:packageMsi :desktopApp:packageAppImage --no-daemon
 
       - name: Verificar el runtime empaquetado
         shell: bash
-        # Bloquea el release a propósito, a diferencia de la versión anterior de este paso, que
-        # solo dejaba constancia en el log.
+        # Bloquea el release a propósito. El runtime que arma jlink es mínimo, y un módulo que
+        # falte no lo detecta ni un test ni `packageMsi`: la aplicación instalada muere en el
+        # arranque con «Failed to launch JVM» y el pipeline termina igual de verde. Ya ocurrió
+        # una vez con `java.naming`, que logback necesita por reflexión y que
+        # `suggestRuntimeModules` no sugiere porque jdeps no la ve.
         #
-        # El runtime que arma jlink es mínimo, y un módulo que falte no lo detecta ni un test ni
-        # `packageMsi`: la aplicación instalada muere en el arranque con «Failed to launch JVM» y
-        # el pipeline termina igual de verde. Ya ocurrió una vez con `java.naming`, que logback
-        # necesita por reflexión y que `suggestRuntimeModules` no sugiere porque jdeps no la ve.
-        #
-        # Esto comprueba la declaración, no el arranque: un smoke test de verdad exigiría ejecutar
-        # la aplicación, y es una aplicación de bandeja que no termina sola. Cubre la regresión
-        # concreta que nos mordió —que alguien quite un módulo de nativeDistributions— y no más.
+        # Comprueba la declaración, no el arranque: un smoke test de verdad exigiría ejecutar una
+        # aplicación de bandeja que no termina sola. Cubre la regresión concreta que nos mordió
+        # —que alguien quite un módulo de nativeDistributions— y no más.
         run: |
           archivo_release=$(find desktopApp/build/compose -type f -name release -path '*runtime*' -print -quit || true)
           if [ -z "$archivo_release" ]; then
@@ -112,11 +137,45 @@ jobs:
             esac
           done
 
-      - name: Publicar el Release con el instalador
+      - name: Localizar el MSI y comprimir el portable
+        id: art
+        shell: bash
+        run: |
+          msi=$(find desktopApp/build/compose/binaries/main/msi -name '*.msi' -print -quit)
+          if [ -z "$msi" ]; then
+            echo "No se encontró ningún .msi." >&2
+            exit 1
+          fi
+          appdir="desktopApp/build/compose/binaries/main/app/ImageWatch"
+          if [ ! -d "$appdir" ]; then
+            echo "No se encontró la carpeta app-image en $appdir." >&2
+            exit 1
+          fi
+          zip="ImageWatch-${{ needs.tag.outputs.version }}-portable.zip"
+          ( cd "$(dirname "$appdir")" && 7z a -tzip "$GITHUB_WORKSPACE/$zip" "ImageWatch" >/dev/null )
+          echo "msi=$msi" >> "$GITHUB_OUTPUT"
+          echo "zip=$zip" >> "$GITHUB_OUTPUT"
+
+      - name: Firmar el MSI (solo si hay certificado configurado)
+        if: ${{ env.SIGN_PFX_BASE64 != '' }}
+        shell: pwsh
+        run: |
+          $pfx = Join-Path $env:RUNNER_TEMP 'sign.pfx'
+          [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:SIGN_PFX_BASE64))
+          $signtool = Get-ChildItem 'C:\Program Files (x86)\Windows Kits\10\bin\*\x64\signtool.exe' |
+            Sort-Object FullName -Descending | Select-Object -First 1
+          if (-not $signtool) { throw 'signtool.exe no encontrado en el Windows SDK.' }
+          & $signtool.FullName sign /fd SHA256 /td SHA256 `
+            /tr http://timestamp.sectigo.com `
+            /f $pfx /p $env:SIGN_PFX_PASSWORD `
+            '${{ steps.art.outputs.msi }}'
+
+      - name: Publicar el Release con los dos artefactos
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: bash
         run: |
-          gh release create "${{ github.ref_name }}" "${{ steps.msi.outputs.path }}" \
-            --title "ImageWatch ${{ github.ref_name }}" \
+          gh release create "v${{ needs.tag.outputs.version }}" \
+            "${{ steps.art.outputs.msi }}" "${{ steps.art.outputs.zip }}" \
+            --title "ImageWatch v${{ needs.tag.outputs.version }}" \
             --generate-notes
