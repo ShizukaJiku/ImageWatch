@@ -160,15 +160,32 @@ jobs:
             /f $pfx /p $env:SIGN_PFX_PASSWORD `
             '${{ steps.art.outputs.msi }}'
 
-      - name: Publicar el Release con los dos artefactos
+      - name: Calcular el checksum del MSI
+        id: hash
+        if: steps.decide.outputs.release == 'true'
+        shell: pwsh
+        # Después de firmar: firmar cambia los bytes del MSI, así que el hash sale del fichero
+        # final. UpdateDownloader baja este `.sha256` y lo compara con lo que descarga.
+        run: |
+          $msi = '${{ steps.art.outputs.msi }}'
+          $name = Split-Path $msi -Leaf
+          $hash = (Get-FileHash $msi -Algorithm SHA256).Hash.ToLower()
+          $out = "$msi.sha256"
+          # Formato estilo `sha256sum`: "<hash>  <nombre>". Se lee el primer campo de 64 hex.
+          "$hash  $name" | Set-Content -NoNewline -Path $out -Encoding ascii
+          "sha256=$out" >> $env:GITHUB_OUTPUT
+
+      - name: Publicar el Release con los tres artefactos
         if: steps.decide.outputs.release == 'true'
         shell: bash
         # `gh release create` crea el tag vX.Y.Z sobre este commit en el mismo paso. Solo se
-        # llega aquí con MSI y portable ya construidos, verificados y -si hay certificado-
-        # firmados: el tag y el Release nacen juntos o no nacen.
+        # llega aquí con MSI, portable y checksum ya construidos, verificados y -si hay
+        # certificado- firmados: el tag y el Release nacen juntos o no nacen.
         run: |
           gh release create "v${{ steps.decide.outputs.version }}" \
-            "${{ steps.art.outputs.msi }}" "${{ steps.art.outputs.zip }}" \
+            "${{ steps.art.outputs.msi }}" \
+            "${{ steps.hash.outputs.sha256 }}" \
+            "${{ steps.art.outputs.zip }}" \
             --target "$GITHUB_SHA" \
             --title "ImageWatch v${{ steps.decide.outputs.version }}" \
             --generate-notes
