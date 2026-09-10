@@ -21,6 +21,7 @@ enum class AppSvg(private val file: String) {
     BACK("arrow-left"),
     CLOSE("close"),
     REFRESH("refresh"),
+    SPINNER("spinner"),
     CHECK("check"),
     CHECK_ALL("check-all"),
     MINUS("minus"),
