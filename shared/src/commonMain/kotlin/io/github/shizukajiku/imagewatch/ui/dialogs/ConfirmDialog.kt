@@ -74,26 +74,28 @@ fun ConfirmDialog(
                     Text(title, fontWeight = FontWeight.Bold, fontSize = TypeScale.body)
                 }
                 Text(body, fontSize = TypeScale.meta, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Surface(color = MaterialTheme.colorScheme.background, shape = RoundedCornerShape(Radius.sm)) {
-                    Column(
-                        Modifier.fillMaxWidth().padding(Space.md),
-                        verticalArrangement = Arrangement.spacedBy(Space.xs),
-                    ) {
-                        lost.forEach { linea ->
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(Space.sm),
-                            ) {
-                                Box(
-                                    Modifier.size(4.dp)
-                                        .background(MaterialTheme.colorScheme.onSurfaceVariant, CircleShape),
-                                )
-                                Text(
-                                    linea,
-                                    fontSize = TypeScale.meta,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    style = TabularNums,
-                                )
+                if (lost.isNotEmpty()) {
+                    Surface(color = MaterialTheme.colorScheme.background, shape = RoundedCornerShape(Radius.sm)) {
+                        Column(
+                            Modifier.fillMaxWidth().padding(Space.md),
+                            verticalArrangement = Arrangement.spacedBy(Space.xs),
+                        ) {
+                            lost.forEach { linea ->
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(Space.sm),
+                                ) {
+                                    Box(
+                                        Modifier.size(4.dp)
+                                            .background(MaterialTheme.colorScheme.onSurfaceVariant, CircleShape),
+                                    )
+                                    Text(
+                                        linea,
+                                        fontSize = TypeScale.meta,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        style = TabularNums,
+                                    )
+                                }
                             }
                         }
                     }
