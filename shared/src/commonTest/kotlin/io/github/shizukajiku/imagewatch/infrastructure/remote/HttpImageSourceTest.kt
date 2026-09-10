@@ -39,7 +39,7 @@ internal class HttpImageSourceTest {
         val engine = MockEngine { request ->
             respond(
                 content = """{"productName":"alpha","extra":42,"nested":{"a":1},""" +
-                    """"lastRelease":"registry.local/alpha:1.2.3","update_time":"2026-09-03T10:00:00"}""",
+                    """"lastRelease":"registry.local/alpha:1.2.3","update_time":"2026-09-03T10:00:00Z"}""",
                 status = HttpStatusCode.OK,
                 headers = headersOf("Content-Type", "application/json"),
             )
@@ -49,6 +49,32 @@ internal class HttpImageSourceTest {
 
         assertNull(results.first().error)
         assertEquals("registry.local/alpha:1.2.3", assertNotNull(results.first().release).reference)
+    }
+
+    @Test
+    fun parsesFractionalSecondsAndZuluOffset() = runTest {
+        val engine = MockEngine {
+            respond(
+                content = """{"productName":"alpha","lastRelease":"registry.local/alpha:1.0.0",""" +
+                    """"update_time":"2027-01-15T08:30:00.123Z"}""",
+                status = HttpStatusCode.OK,
+                headers = headersOf("Content-Type", "application/json"),
+            )
+        }
+
+        val results = source(engine).findByNames(listOf("alpha"))
+
+        assertNull(results.first().error)
+        assertNotNull(results.first().release)
+    }
+
+    @Test
+    fun parsesTimestampWithoutFractionalSeconds() = runTest {
+        val engine = MockEngine { request -> ok(nameOf(request.url.encodedPath), "1.0.0") }
+
+        val results = source(engine).findByNames(listOf("alpha"))
+
+        assertNull(results.first().error)
     }
 
     @Test
@@ -137,9 +163,9 @@ internal class HttpImageSourceTest {
         /** El último segmento de la ruta es el nombre de la imagen consultada. */
         private fun nameOf(encodedPath: String) = encodedPath.substringAfterLast('/')
 
-        private fun body(name: String, version: String) =
+        private fun body(name: String, version: String, updateTime: String = "2026-09-03T10:00:00Z") =
             """{"productName":"$name","lastRelease":"registry.local/$name:$version",""" +
-                """"update_time":"2026-09-03T10:00:00"}"""
+                """"update_time":"$updateTime"}"""
 
         private fun io.ktor.client.engine.mock.MockRequestHandleScope.ok(name: String, version: String) = respond(
             content = body(name, version),
