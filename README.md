@@ -11,19 +11,8 @@ sistema.
 ## Primeros pasos tras clonar
 
 ```bash
-# 1. Crear la lista de patrones prohibidos (NO se versiona; ver "Secretos")
-#    Un patrón de regex extendida por línea.
-printf 'un-patron\notro-patron\n' > .denylist.local
-
-# 2. Instalar el hook de pre-commit
-./scripts/install-hooks.sh
-
-# 3. Arrancar
 ./gradlew :desktopApp:run
 ```
-
-**Sin el paso 1 y 2, todos los commits fallan.** El hook aborta si no encuentra
-`.denylist.local`, a propósito: es preferible un commit bloqueado a uno que filtre algo.
 
 Un clon limpio arranca en **modo simulación**, con un origen de prueba cuyas versiones
 avanzan con el tiempo. No hace falta configurar nada para verlo funcionar.
@@ -40,6 +29,85 @@ avanzan con el tiempo. No hace falta configurar nada para verlo funcionar.
 | `./gradlew :desktopApp:createDistributable` | Genera una distribución ejecutable con su propio runtime en `desktopApp/build/compose/binaries/main/app/` |
 | `./gradlew :desktopApp:runDistributable` | Arranca esa distribución. **Es la única orden que prueba el binario empaquetado**: `packageMsi` puede terminar en verde y aun así producir un ejecutable que no arranca |
 | `./gradlew :desktopApp:packageMsi` | Genera el instalador de Windows en `desktopApp/build/compose/binaries/main/msi/` |
+| `./gradlew :desktopApp:packageAppImage` | Genera la versión portable (carpeta con runtime propio) en `desktopApp/build/compose/binaries/main/app/ImageWatch/` |
+| `./gradlew :desktopApp:generateIcon` | Regenera `desktopApp/icons/ImageWatch.ico` desde `AppIconPainter`. Solo tras cambiar la marca; el `.ico` va commiteado |
+
+## Distribución e instalación
+
+Dos formatos, ambos con su propio runtime (JDK 21 recortado con `jlink`): quien instale
+**no necesita Java**.
+
+### Instalador MSI
+
+`./gradlew :desktopApp:packageMsi` → `desktopApp/build/compose/binaries/main/msi/ImageWatch-1.0.0.msi` (~66 MB).
+
+- **Sin permisos de administrador.** Instala en `%LOCALAPPDATA%\ImageWatch` (perfil del
+  usuario), no en `Program Files`.
+- Crea entrada en el **menú Inicio** y **acceso directo** en el escritorio.
+- Deja elegir carpeta durante la instalación (`dirChooser`).
+- `upgradeUuid` fijo: instalar un MSI con versión mayor **actualiza en sitio**, no pone un
+  segundo ImageWatch. La versión sale de `imagewatch.version` en `gradle.properties`
+  (`MAYOR.MENOR.PARCHE`, mayor > 0).
+- **Instalación limpia**: sin datos de prueba. La app empaquetada arranca sin simulación y
+  sin imágenes sembradas (lo detecta por `jpackage.app-path`); la lista está vacía hasta
+  que pones la URL del registry en Ajustes. En desarrollo (`gradlew run`) sí arranca en
+  simulación con las cuatro imágenes de ejemplo.
+- **Actualizar conserva los datos**: estado, configuración y lista de imágenes viven en
+  `~/.notifier/` (perfil del usuario), que el instalador nunca toca. Desinstalar tampoco lo
+  borra.
+
+### Portable (AppImage)
+
+`./gradlew :desktopApp:packageAppImage` → carpeta `desktopApp/build/compose/binaries/main/app/ImageWatch/`
+con `ImageWatch.exe` + `runtime/` + `app/` (~120 MB).
+
+- No se instala: se comprime en zip, el usuario descomprime y ejecuta `ImageWatch.exe`.
+- Sin escritura en el registro, sin menú Inicio, sin permisos.
+- No hay actualización en sitio: se reemplaza la carpeta.
+
+jpackage no produce un `.exe` autoextraíble de un solo fichero; «portable» aquí es esta
+carpeta.
+
+### Icono
+
+La marca (`AppIconPainter`: cuadrícula 2×2) es la misma en ventana, bandeja e instalador.
+El `.ico` multi-resolución (16–256 px, PNG embebido) se genera desde ese mismo dibujo con
+`./gradlew :desktopApp:generateIcon` y se commitea en `desktopApp/icons/`. `build.gradle.kts`
+lo referencia en `windows { iconFile }`.
+
+### Firma de código
+
+Ni el MSI ni el `.exe` van firmados. Al instalar, Windows SmartScreen muestra «editor
+desconocido». Para quitarlo hace falta un certificado *Authenticode* y firmar **después**
+de empaquetar, con `signtool.exe` (Windows SDK):
+
+```
+signtool sign /fd SHA256 /td SHA256 /tr http://timestamp.sectigo.com ^
+  /f cert.pfx /p <clave> ImageWatch-1.0.0.msi
+```
+
+(o `/csp`/`/kc` con token hardware, o el CLI de firma en nube de la CA). El `/tr`
+—sello de tiempo— mantiene la firma válida tras caducar el certificado.
+
+Opciones de certificado: **SignPath Foundation** (gratis para proyectos de código
+abierto, firma en la nube desde CI, requiere aprobación), **Azure Trusted Signing**
+(~10 $/mes, HSM en nube, sin token), **Certum/SSL.com Open Source** (barato, con token).
+`sigstore`/`cosign` **no** sirve: no es firma Authenticode y SmartScreen no la reconoce.
+
+Cuando exista un certificado: subir el `.pfx` en base64 como secreto `SIGN_PFX_BASE64` y
+su contraseña como `SIGN_PFX_PASSWORD`. El workflow de release firma el MSI solo si están
+presentes; sin ellos publica sin firmar.
+
+## Integración continua
+
+Dos workflows en `.github/workflows/`:
+
+- **`tests.yml`** — en cada pull request y en cada push a `main`. Formato (`spotlessCheck`),
+  `:shared:jvmTest`, cobertura (`:shared:koverVerify`) y compilación de `:desktopApp`.
+- **`release.yml`** — al fusionar a `main`. Lee `imagewatch.version` de `gradle.properties`:
+  si el tag `vX.Y.Z` **no existe todavía**, crea el tag y publica un Release de GitHub con el
+  MSI y el zip portable como assets, con notas autogeneradas. Fusionar sin subir la versión
+  no hace nada. **Publicar una versión = subir `imagewatch.version` en el PR que la cierra.**
 
 ## Configuración
 
@@ -48,7 +116,11 @@ La fuente de verdad es `~/.notifier/config.json`. Las variables de entorno solo
 mandan el fichero y la pantalla de ajustes (el engranaje de la cabecera), que lo edita en
 caliente: guardar surte efecto sin reiniciar la aplicación.
 
-| Variable | Por defecto | Para qué |
+Los valores por defecto de abajo son los de **desarrollo** (`gradlew run`). La **app
+empaquetada** arranca sin datos de prueba: `SIMULATION_MODE=false` e `IMAGE_NAMES` vacío.
+Las variables de entorno, si están puestas, mandan en ambos casos.
+
+| Variable | Por defecto (dev) | Para qué |
 |---|---|---|
 | `SIMULATION_MODE` | `true` | Usa el origen de prueba en lugar del remoto |
 | `IMAGE_VERSION_URL` | *(vacío)* | URL base del origen. Obligatoria si desactivas la simulación |
@@ -127,16 +199,6 @@ Todo en `~/.notifier/`:
 
 El registro solo anota lo que **cambia** —versiones nuevas, imágenes que empiezan a
 fallar, reconocimientos—, no un renglón por ciclo.
-
-## Secretos
-
-`.denylist.local` contiene los identificadores que nunca deben entrar en el repositorio y
-**no se versiona**: si estuviera dentro, filtraría justo lo que pretende bloquear. El hook
-de pre-commit lo lee en cada commit y aborta si encuentra alguna coincidencia, tanto en el
-contenido como en los nombres de fichero.
-
-Consecuencia práctica: guarda una copia de ese fichero fuera del repositorio, o tendrás
-que reconstruirlo al clonar en otra máquina.
 
 ## Estructura
 
