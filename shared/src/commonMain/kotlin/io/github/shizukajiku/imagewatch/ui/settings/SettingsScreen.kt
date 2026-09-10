@@ -3,11 +3,11 @@ package io.github.shizukajiku.imagewatch.ui.settings
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -17,7 +17,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
@@ -46,6 +45,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import io.github.shizukajiku.imagewatch.config.ThemePreference
 import io.github.shizukajiku.imagewatch.ui.components.AppSvg
+import io.github.shizukajiku.imagewatch.ui.components.IwIconButton
+import io.github.shizukajiku.imagewatch.ui.components.Pill
+import io.github.shizukajiku.imagewatch.ui.components.SurfaceCard
 import io.github.shizukajiku.imagewatch.ui.components.SvgIcon
 import io.github.shizukajiku.imagewatch.ui.dialogs.ConfirmDialog
 import io.github.shizukajiku.imagewatch.ui.theme.IconSize
@@ -93,15 +95,7 @@ fun SettingsScreen(
             horizontalArrangement = Arrangement.spacedBy(Space.md),
             modifier = Modifier.padding(start = Space.xl, top = Space.lg, end = Space.xl, bottom = Space.md),
         ) {
-            Box(
-                Modifier.size(32.dp)
-                    .background(MaterialTheme.colorScheme.surfaceVariant, CircleShape)
-                    .clickable(onClick = onBack)
-                    .focusRing(Radius.pill),
-                contentAlignment = Alignment.Center,
-            ) {
-                SvgIcon(AppSvg.BACK, MaterialTheme.colorScheme.onSurfaceVariant, Modifier.size(IconSize.md))
-            }
+            IwIconButton(AppSvg.BACK, onBack)
             Column {
                 Text("Ajustes", fontWeight = FontWeight.Bold, fontSize = TypeScale.title)
                 Text(
@@ -305,12 +299,7 @@ private fun systemThemeLabel() = if (androidx.compose.foundation.isSystemInDarkT
 
 @Composable
 private fun SettingsCard(title: String, content: @Composable ColumnScope.() -> Unit) {
-    androidx.compose.material3.Surface(
-        color = MaterialTheme.colorScheme.surface,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.surfaceVariant),
-        shape = RoundedCornerShape(Radius.md),
-        modifier = Modifier.fillMaxWidth(),
-    ) {
+    SurfaceCard(modifier = Modifier.fillMaxWidth()) {
         Column(Modifier.padding(Space.lg), verticalArrangement = Arrangement.spacedBy(Space.md)) {
             Text(title, fontWeight = FontWeight.Bold, fontSize = TypeScale.body)
             content()
@@ -346,30 +335,18 @@ private fun Segmented(selected: ThemePreference, onSelect: (ThemePreference) -> 
     ) {
         ThemePreference.entries.forEach { option ->
             val on = option == selected
-            Text(
-                themeLabel(option),
-                textAlign = TextAlign.Center,
-                fontSize = TypeScale.meta,
-                fontWeight = if (on) FontWeight.SemiBold else FontWeight.Normal,
-                color = if (on) {
+            Pill(
+                text = themeLabel(option),
+                containerColor = if (on) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
+                contentColor = if (on) {
                     MaterialTheme.colorScheme.onPrimaryContainer
                 } else {
                     MaterialTheme.colorScheme.onSurfaceVariant
                 },
-                modifier = Modifier.weight(1f)
-                    .then(
-                        if (on) {
-                            Modifier.background(
-                                MaterialTheme.colorScheme.primaryContainer,
-                                RoundedCornerShape(Radius.pill),
-                            )
-                        } else {
-                            Modifier
-                        },
-                    )
-                    .clickable { onSelect(option) }
-                    .padding(vertical = Space.sm)
-                    .focusRing(Radius.pill),
+                onClick = { onSelect(option) },
+                modifier = Modifier.weight(1f),
+                fontWeight = if (on) FontWeight.SemiBold else FontWeight.Normal,
+                contentPadding = PaddingValues(vertical = Space.sm),
             )
         }
     }
@@ -447,20 +424,13 @@ private fun FieldBox(isError: Boolean, content: @Composable () -> Unit) {
 
 @Composable
 private fun FootPill(text: String, container: Color, onContent: Color, onClick: () -> Unit) {
-    androidx.compose.material3.Surface(
-        color = container,
-        shape = RoundedCornerShape(Radius.pill),
+    Pill(
+        text = text,
+        containerColor = container,
+        contentColor = onContent,
         onClick = onClick,
-        modifier = Modifier.focusRing(Radius.pill),
-    ) {
-        Text(
-            text,
-            color = onContent,
-            fontSize = TypeScale.meta,
-            fontWeight = FontWeight.SemiBold,
-            modifier = Modifier.padding(horizontal = Space.lg, vertical = Space.sm),
-        )
-    }
+        contentPadding = PaddingValues(horizontal = Space.lg, vertical = Space.sm),
+    )
 }
 
 @Composable
