@@ -18,5 +18,9 @@ captures
 **/xcshareddata/WorkspaceSettings.xcsettings
 node_modules/
 
+### Notas de desarrollo (no se publican) ###
+docs/
+.superpowers/
+
 ### VS Code ###
 .vscode/

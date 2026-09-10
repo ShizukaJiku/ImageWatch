@@ -4,20 +4,31 @@ Vigila las versiones de imágenes de contenedor publicadas en un registry remoto
 cuando aparece una más reciente que la que ya diste por vista. Vive en la bandeja del
 sistema.
 
-## Requisitos
+## Instalación
 
-- **JDK 21.** Es lo único que hay que instalar: Gradle viene con el wrapper.
+Descarga desde la [última Release](https://github.com/ShizukaJiku/ImageWatch/releases):
 
-## Primeros pasos tras clonar
+- **`ImageWatch-X.Y.Z.msi`** — instalador de Windows. Sin permisos de administrador:
+  instala en el perfil del usuario, con acceso directo y entrada en el menú Inicio.
+  Actualizar conserva tu configuración y tu lista de imágenes.
+- **`ImageWatch-X.Y.Z-portable.zip`** — versión sin instalar. Descomprime y ejecuta
+  `ImageWatch.exe`.
+
+Ninguno necesita tener Java instalado: llevan su propio runtime.
+
+Al primer arranque la lista está vacía. Abre Ajustes (el engranaje de la cabecera), pon la
+URL del registry y añade las imágenes que quieras vigilar.
+
+## Compilar desde el código
+
+Requiere **JDK 21**; Gradle viene con el wrapper.
 
 ```bash
 ./gradlew :desktopApp:run
 ```
 
-Un clon limpio arranca en **modo simulación**, con un origen de prueba cuyas versiones
-avanzan con el tiempo. No hace falta configurar nada para verlo funcionar.
-
-## Órdenes
+Arranca en **modo simulación**, con un origen de prueba cuyas versiones avanzan con el
+tiempo. No hace falta configurar nada para verlo funcionar.
 
 | Orden | Qué hace |
 |---|---|
@@ -32,10 +43,10 @@ avanzan con el tiempo. No hace falta configurar nada para verlo funcionar.
 | `./gradlew :desktopApp:packageAppImage` | Genera la versión portable (carpeta con runtime propio) en `desktopApp/build/compose/binaries/main/app/ImageWatch/` |
 | `./gradlew :desktopApp:generateIcon` | Regenera `desktopApp/icons/ImageWatch.ico` desde `AppIconPainter`. Solo tras cambiar la marca; el `.ico` va commiteado |
 
-## Distribución e instalación
+## Empaquetado
 
-Dos formatos, ambos con su propio runtime (JDK 21 recortado con `jlink`): quien instale
-**no necesita Java**.
+Cómo se producen los artefactos de la Release. Dos formatos, ambos con su propio runtime
+(JDK 21 recortado con `jlink`): quien instale **no necesita Java**.
 
 ### Instalador MSI
 
