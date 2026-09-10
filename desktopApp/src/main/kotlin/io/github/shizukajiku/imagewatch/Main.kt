@@ -13,6 +13,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalWindowInfo
+import androidx.compose.ui.unit.DpSize
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Tray
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
@@ -32,6 +34,7 @@ import io.github.shizukajiku.imagewatch.infrastructure.persistence.JsonConfigSto
 import io.github.shizukajiku.imagewatch.infrastructure.persistence.JsonImageStateStore
 import io.github.shizukajiku.imagewatch.infrastructure.persistence.JsonSilencedImageStore
 import io.github.shizukajiku.imagewatch.infrastructure.persistence.JsonTrackedImageStore
+import io.github.shizukajiku.imagewatch.infrastructure.remote.EmptyImageSource
 import io.github.shizukajiku.imagewatch.infrastructure.remote.HttpClientFactory
 import io.github.shizukajiku.imagewatch.infrastructure.remote.HttpImageSource
 import io.github.shizukajiku.imagewatch.infrastructure.remote.ReloadableImageSource
@@ -83,20 +86,26 @@ private fun Path.sibling(name: String): Path = (parent ?: ".".toPath()).resolve(
  *
  * Vive aquí y no junto a [AppConfig]: leer `System.getenv` es cableado, y el cableado es lo único
  * que aporta este módulo. `AppConfig` está en `commonMain`, donde no hay variables de entorno.
+ *
+ * En la app empaquetada (jpackage pone `jpackage.app-path`) una instalación limpia arranca **sin
+ * datos de prueba**: sin simulación y sin imágenes sembradas. En desarrollo -`gradlew run`- sigue
+ * arrancando en simulación con las cuatro imágenes de ejemplo. Las variables de entorno mandan por
+ * encima de ambos en cualquier caso.
  */
 private fun configFromEnvironment(): AppConfig {
     val env = System.getenv()
     fun get(name: String, fallback: String) = env[name] ?: fallback
+    val packaged = System.getProperty("jpackage.app-path") != null
     val home = get("USERPROFILE", ".").toPath()
     return AppConfig(
         stateFile = get("NOTIFIER_STATE_FILE", home.resolve(".notifier/images.json").toString()),
         remoteUrl = get("IMAGE_VERSION_URL", ""),
         pollInterval = get("POLL_INTERVAL_SECONDS", "300").toLong().seconds,
-        imageNames = get("IMAGE_NAMES", "alpha,beta,gamma,delta")
+        imageNames = get("IMAGE_NAMES", if (packaged) "" else "alpha,beta,gamma,delta")
             .split(",")
             .map { it.trim() }
             .filter { it.isNotBlank() },
-        simulationMode = get("SIMULATION_MODE", "true").toBoolean(),
+        simulationMode = get("SIMULATION_MODE", if (packaged) "false" else "true").toBoolean(),
         ignoreSslErrors = get("IGNORE_SSL_ERRORS", "true").toBoolean(),
         theme = ThemePreference.valueOf(get("THEME", "SYSTEM")),
         toastsEnabled = get("TOASTS_ENABLED", "true").toBoolean(),
@@ -161,10 +170,10 @@ private class Wiring {
         val seedFile = seed.stateFile.toPath()
         configStore = JsonConfigStore(seedFile.sibling("config.json"), seed)
         val loaded = configStore.load()
-        check(loaded.simulationMode || loaded.remoteUrl.isNotBlank()) {
-            "Falta la URL del origen remoto. Define IMAGE_VERSION_URL " +
-                "o deja SIMULATION_MODE=true para usar el origen simulado."
-        }
+        // Sin comprobación de "falta la URL": una instalación limpia arranca sin simulación y sin
+        // URL, y es un estado válido -lista vacía, el usuario pone la URL en Ajustes-. `sourceFor`
+        // devuelve EmptyImageSource mientras no haya URL, así que no se construye un
+        // HttpImageSource con cadena vacía.
         config = MutableStateFlow(loaded)
         source = ReloadableImageSource(sourceFor(loaded))
         // La ruta llega como texto -el dominio no sabe de ficheros- y se convierte aqui, que es
@@ -281,22 +290,29 @@ private class Wiring {
         onDone()
     }
 
-    private fun sourceFor(config: AppConfig): ImageSource = if (config.simulationMode) {
-        SimulatedImageSource(Clock.System, SIMULATED_BUMP_EVERY)
-    } else {
-        HttpImageSource(
+    private fun sourceFor(config: AppConfig): ImageSource = when {
+        config.simulationMode -> SimulatedImageSource(Clock.System, SIMULATED_BUMP_EVERY)
+
+        // Instalación limpia: sin URL todavía. HttpImageSource lanzaría al construirse con "".
+        config.remoteUrl.isBlank() -> EmptyImageSource
+
+        else -> HttpImageSource(
             HttpClientFactory.create(config.ignoreSslErrors),
             config.remoteUrl,
         )
     }
 }
 
-fun main() {
+fun main(args: Array<String>) {
+    // `--minimized` lo pone la clave Run del registro (WindowsAutostart): al iniciar sesion la
+    // app arranca oculta en la bandeja. Un arranque normal -atajo, `gradlew run`- abre la ventana.
+    val startHidden = "--minimized" in args
+
     val wiring = Wiring()
     wiring.controller.start()
 
     application {
-        var windowVisible by remember { mutableStateOf(false) }
+        var windowVisible by remember { mutableStateOf(!startHidden) }
         // Se incrementa cada vez que algo pide traer la ventana al frente. La ventana lo observa
         // porque poner windowVisible a true no hace nada si ya era true: minimizada seguia
         // minimizada, y "Ver" no traia nada.
@@ -304,7 +320,7 @@ fun main() {
         // Vive aqui y no dentro de MainScreen: el "Ver todas" del resumen de avisos necesita
         // poder devolver a la pantalla de Imagenes aunque el usuario estuviera en Ajustes.
         var screen by remember { mutableStateOf(Screen.IMAGES) }
-        val windowState = rememberWindowState()
+        val windowState = rememberWindowState(size = DpSize(1120.dp, 720.dp))
         val config by wiring.config.collectAsState()
 
         // Vive en el scope de la aplicación, no en el de la ventana: el Tray necesita saber si
