@@ -1,6 +1,7 @@
 package io.github.shizukajiku.imagewatch.ui.toast
 
 import io.github.shizukajiku.imagewatch.domain.ImageState
+import io.github.shizukajiku.imagewatch.infrastructure.persistence.Lock
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
@@ -135,6 +136,16 @@ class ToastState(
     private val sequence = MutableStateFlow(0L)
     private val relojes = MutableStateFlow(Relojes())
 
+    /**
+     * Serializa cada mutación de la cola con su [publicar]. El CAS de cada `StateFlow` protege una
+     * escritura, pero «mutar `mutableToasts` y derivar `visibleToasts`» son dos pasos: sin este
+     * candado, `show()` en el hilo del planificador puede leer la cola, quedarse a medias, y que un
+     * `dismiss()` del hilo de Compose publique una lista más nueva que el primero pisa luego con su
+     * derivación vieja -reapareciendo un aviso ya descartado, o faltando uno recién añadido-. Es
+     * reentrante: `pause()` llama a `publicarFraccion()`, `resume()` a `sincronizarRelojes()`.
+     */
+    private val lock = Lock()
+
     /** La cola completa, en orden de llegada. [toasts] es su recorte visible — ver [publicar]. */
     private val mutableToasts = MutableStateFlow<List<Toast>>(emptyList())
     private val visibleToasts = MutableStateFlow<List<Toast>>(emptyList())
@@ -177,9 +188,9 @@ class ToastState(
         imageName = null,
     )
 
-    fun show(updates: List<ImageState>) {
+    fun show(updates: List<ImageState>) = lock.withLock {
         if (updates.isEmpty()) {
-            return
+            return@withLock
         }
         val millis = duration().inWholeMilliseconds.coerceAtLeast(MIN_VISIBLE_MILLIS)
         val nuevos = updates.map { toastOf(it, millis) }
@@ -194,9 +205,9 @@ class ToastState(
      * la misma cola, cuenta para el mismo `TOASTS_VISIBLES`, y su reloj lo lleva igual
      * [sincronizarRelojes]. La única diferencia es el contenido de la tarjeta ([failureOf]).
      */
-    fun showFailures(failures: List<ImageState>) {
+    fun showFailures(failures: List<ImageState>) = lock.withLock {
         if (failures.isEmpty()) {
-            return
+            return@withLock
         }
         val millis = duration().inWholeMilliseconds.coerceAtLeast(MIN_VISIBLE_MILLIS)
         val nuevos = failures.map { failureOf(it, millis) }
@@ -206,7 +217,7 @@ class ToastState(
         sincronizarRelojes()
     }
 
-    fun dismiss(id: Long) {
+    fun dismiss(id: Long) = lock.withLock {
         olvidar(id)
         mutableToasts.update { current -> current.filterNot { it.id == id } }
         publicar()
@@ -218,7 +229,7 @@ class ToastState(
      * nueva por ver, y el usuario acaba de decir que ya la vio. Dejarlo en pantalla —o peor, dejarlo
      * esperando turno en la cola para aparecer después— es enseñar algo que ya no es cierto.
      */
-    fun dismissFor(imageName: String) {
+    fun dismissFor(imageName: String) = lock.withLock {
         mutableToasts.value.filter { it.imageName == imageName }.forEach { olvidar(it.id) }
         mutableToasts.update { current -> current.filterNot { it.imageName == imageName } }
         publicar()
@@ -226,14 +237,14 @@ class ToastState(
     }
 
     /** El puntero encima: se detiene el reloj y se conserva lo que quedaba. */
-    fun pause(id: Long) {
+    fun pause(id: Long) = lock.withLock {
         relojes.update { it.copy(paused = it.paused + id) }
         detener(id)
         publicarFraccion(id)
     }
 
     /** El puntero fuera: sigue con lo que quedaba, no con el total. */
-    fun resume(id: Long) {
+    fun resume(id: Long) = lock.withLock {
         relojes.update { it.copy(paused = it.paused - id) }
         sincronizarRelojes()
     }
@@ -310,7 +321,7 @@ class ToastState(
         publicar()
     }
 
-    private fun marcarSaliente(id: Long) {
+    private fun marcarSaliente(id: Long) = lock.withLock {
         relojes.update {
             it.copy(
                 jobs = it.jobs - id,
@@ -384,7 +395,9 @@ class ToastState(
         title = "${image.name} · versión nueva",
         sub = "versión ${image.remote?.value ?: ABSENT}",
         meta = image.registry,
-        action = "Visto",
+        // «Ver», no «Visto»: la acción abre la ventana y resalta la fila -navegar-, no reconoce
+        // la versión. «Visto» es la acción de reconocer (H-92), que vive en la fila y su menú.
+        action = "Ver",
         imageName = image.name,
         durationMillis = millis,
     )

@@ -143,6 +143,38 @@ class SettingsViewModelTest {
     }
 
     @Test
+    fun `un toggle con el intervalo a medio teclear persiste el ultimo intervalo valido, no cero`() {
+        var recibida: AppConfig? = null
+        val vm = viewModel(onApply = {
+            recibida = it
+            null
+        })
+
+        // El usuario borra el campo del intervalo y, sin hacer commit, cambia un toggle.
+        vm.onIntervalChange("")
+        vm.onMutedAllChange(true)
+
+        assertEquals(300.seconds, recibida?.pollInterval, "No debe colar un intervalo de 0 s")
+        assertEquals(true, recibida?.mutedAll)
+    }
+
+    @Test
+    fun `un toggle tras un commit valido persiste ese intervalo aunque el campo quede invalido`() {
+        var recibida: AppConfig? = null
+        val vm = viewModel(onApply = {
+            recibida = it
+            null
+        })
+
+        vm.onIntervalChange("15")
+        vm.onIntervalCommit()
+        vm.onIntervalChange("abc")
+        vm.onThemeChange(ThemePreference.DARK)
+
+        assertEquals(15.seconds, recibida?.pollInterval)
+    }
+
+    @Test
     fun `una URL rechazada por el aplicador pinta la linea de ayuda de la URL`() {
         val vm = viewModel(onApply = { "El endpoint remoto debe utilizar HTTPS" })
 
@@ -150,6 +182,25 @@ class SettingsViewModelTest {
         vm.onUrlCommit()
 
         assertEquals("El endpoint remoto debe utilizar HTTPS", vm.state.value.urlError)
+    }
+
+    @Test
+    fun `reload repuebla el formulario y el siguiente toggle parte de la config nueva`() {
+        var recibida: AppConfig? = null
+        val vm = viewModel(onApply = {
+            recibida = it
+            null
+        })
+
+        val restablecida = config().copy(remoteUrl = "https://otra.ejemplo/api", pollInterval = 60.seconds)
+        vm.reload(restablecida)
+
+        assertEquals("https://otra.ejemplo/api", vm.state.value.remoteUrl)
+        assertEquals("60", vm.state.value.intervalSeconds)
+
+        vm.onMutedAllChange(true)
+        assertEquals("https://otra.ejemplo/api", recibida?.remoteUrl)
+        assertEquals(60.seconds, recibida?.pollInterval)
     }
 
     @Test

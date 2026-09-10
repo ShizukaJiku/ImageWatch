@@ -59,7 +59,7 @@ class ToastStateTest {
         assertEquals("versión 1.1.0", toast.sub)
         assertFalse(toast.sub.contains("1.0.0"), "No nombra la version anterior (V-3)")
         assertEquals("registry.local/alpha", toast.meta)
-        assertEquals("Visto", toast.action)
+        assertEquals("Ver", toast.action)
     }
 
     @Test

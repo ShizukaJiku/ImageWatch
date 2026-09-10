@@ -562,7 +562,13 @@ private fun SettingsPane(
         onVolumeChange = viewModel::onVolumeChange,
         onMutedAllChange = viewModel::onMutedAllChange,
         onAutostartChange = viewModel::onAutostartChange,
-        onResetSettings = { wiring.resetSettings() },
+        onResetSettings = {
+            wiring.resetSettings()
+            // El restablecido cambió `wiring.config` por fuera; el formulario, montado, aún
+            // muestra lo anterior. Se repuebla desde la config vigente para que los controles
+            // reflejen los valores de fábrica y el siguiente toggle no los deshaga.
+            viewModel.reload(wiring.config.value)
+        },
         onWipeLocalData = { wiring.wipeLocalData(onExit) },
         onBack = onBack,
     )

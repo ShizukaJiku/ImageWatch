@@ -1,9 +1,9 @@
 name: Release
 
 # Al fusionar un PR a main (o un push directo a main). Lee `imagewatch.version` de
-# gradle.properties: si su tag `vX.Y.Z` todavía no existe, crea el tag y publica un
-# Release con el instalador MSI y el zip portable. Fusionar sin subir la versión no
-# genera nada.
+# gradle.properties: si su Release `vX.Y.Z` todavía no existe, empaqueta el MSI y el
+# zip portable y publica el Release —creando el tag en el mismo paso—. Fusionar sin
+# subir la versión no genera nada.
 on:
   push:
     branches: [main]
@@ -38,75 +38,64 @@ jobs:
       - name: Tests
         run: ./gradlew :shared:jvmTest --no-daemon
 
-  tag:
-    name: Crear el tag de versión
+  build:
+    name: Instalador y Release
     needs: test
-    runs-on: ubuntu-latest
-    outputs:
-      release: ${{ steps.decide.outputs.release }}
-      version: ${{ steps.decide.outputs.version }}
+    # jpackage + WiX solo producen MSI en Windows: es el runner obligado.
+    runs-on: windows-latest
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      SIGN_PFX_BASE64: ${{ secrets.SIGN_PFX_BASE64 }}
+      SIGN_PFX_PASSWORD: ${{ secrets.SIGN_PFX_PASSWORD }}
     steps:
       - name: Descargar el repositorio
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
-      - name: Decidir si hay versión nueva y etiquetarla
+      - name: Decidir si hay versión nueva
         id: decide
+        shell: bash
+        # El tag NO se crea aquí: lo crea `gh release create` al final, cuando ya hay
+        # artefactos. Así un fallo de empaquetado, de verificación o de firma no deja un
+        # tag huérfano sin Release que bloquee el reintento. La guarda mira si el Release
+        # ya existe -no si el tag existe-: un tag suelto sin Release se reintenta.
         run: |
           version=$(sed -n 's/^imagewatch\.version=//p' gradle.properties | tr -d '[:space:]')
           if [ -z "$version" ]; then
             echo "Falta imagewatch.version en gradle.properties" >&2
             exit 1
           fi
-          tag="v$version"
-          if git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
-            echo "El tag $tag ya existe: nada que publicar."
+          if gh release view "v$version" >/dev/null 2>&1; then
+            echo "El Release v$version ya existe: nada que publicar."
             echo "release=false" >> "$GITHUB_OUTPUT"
           else
-            git config user.name  "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git tag -a "$tag" -m "ImageWatch $version"
-            git push origin "$tag"
-            echo "Etiquetado $tag."
-            echo "release=true"      >> "$GITHUB_OUTPUT"
-            echo "version=$version"  >> "$GITHUB_OUTPUT"
+            echo "release=true" >> "$GITHUB_OUTPUT"
           fi
-
-  build:
-    name: Instalador y Release
-    needs: tag
-    if: needs.tag.outputs.release == 'true'
-    # jpackage + WiX solo producen MSI en Windows: es el runner obligado.
-    runs-on: windows-latest
-    env:
-      SIGN_PFX_BASE64: ${{ secrets.SIGN_PFX_BASE64 }}
-      SIGN_PFX_PASSWORD: ${{ secrets.SIGN_PFX_PASSWORD }}
-    steps:
-      - name: Descargar el tag recién creado
-        uses: actions/checkout@v4
-        with:
-          ref: v${{ needs.tag.outputs.version }}
+          echo "version=$version" >> "$GITHUB_OUTPUT"
 
       - name: Configurar JDK
+        if: steps.decide.outputs.release == 'true'
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: "21"
 
       - name: Configurar Gradle
+        if: steps.decide.outputs.release == 'true'
         uses: gradle/actions/setup-gradle@v4
 
       - name: Instalar WiX Toolset
+        if: steps.decide.outputs.release == 'true'
         run: choco install wixtoolset -y
 
       - name: Empaquetar MSI y portable
+        if: steps.decide.outputs.release == 'true'
         shell: bash
         run: |
           chmod +x gradlew
           ./gradlew :desktopApp:packageMsi :desktopApp:packageAppImage --no-daemon
 
       - name: Verificar el runtime empaquetado
+        if: steps.decide.outputs.release == 'true'
         shell: bash
         # Bloquea el release a propósito. El runtime que arma jlink es mínimo, y un módulo que
         # falte no lo detecta ni un test ni `packageMsi`: la aplicación instalada muere en el
@@ -139,6 +128,7 @@ jobs:
 
       - name: Localizar el MSI y comprimir el portable
         id: art
+        if: steps.decide.outputs.release == 'true'
         shell: bash
         run: |
           msi=$(find desktopApp/build/compose/binaries/main/msi -name '*.msi' -print -quit)
@@ -151,13 +141,13 @@ jobs:
             echo "No se encontró la carpeta app-image en $appdir." >&2
             exit 1
           fi
-          zip="ImageWatch-${{ needs.tag.outputs.version }}-portable.zip"
+          zip="ImageWatch-${{ steps.decide.outputs.version }}-portable.zip"
           ( cd "$(dirname "$appdir")" && 7z a -tzip "$GITHUB_WORKSPACE/$zip" "ImageWatch" >/dev/null )
           echo "msi=$msi" >> "$GITHUB_OUTPUT"
           echo "zip=$zip" >> "$GITHUB_OUTPUT"
 
       - name: Firmar el MSI (solo si hay certificado configurado)
-        if: ${{ env.SIGN_PFX_BASE64 != '' }}
+        if: ${{ steps.decide.outputs.release == 'true' && env.SIGN_PFX_BASE64 != '' }}
         shell: pwsh
         run: |
           $pfx = Join-Path $env:RUNNER_TEMP 'sign.pfx'
@@ -171,11 +161,14 @@ jobs:
             '${{ steps.art.outputs.msi }}'
 
       - name: Publicar el Release con los dos artefactos
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        if: steps.decide.outputs.release == 'true'
         shell: bash
+        # `gh release create` crea el tag vX.Y.Z sobre este commit en el mismo paso. Solo se
+        # llega aquí con MSI y portable ya construidos, verificados y -si hay certificado-
+        # firmados: el tag y el Release nacen juntos o no nacen.
         run: |
-          gh release create "v${{ needs.tag.outputs.version }}" \
+          gh release create "v${{ steps.decide.outputs.version }}" \
             "${{ steps.art.outputs.msi }}" "${{ steps.art.outputs.zip }}" \
-            --title "ImageWatch v${{ needs.tag.outputs.version }}" \
+            --target "$GITHUB_SHA" \
+            --title "ImageWatch v${{ steps.decide.outputs.version }}" \
             --generate-notes

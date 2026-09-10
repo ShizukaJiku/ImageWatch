@@ -55,21 +55,40 @@ class SettingsViewModel(
     private val imageNames = current.imageNames
     private val simulationMode = current.simulationMode
 
-    private val mutableState = MutableStateFlow(
-        SettingsUiState(
-            remoteUrl = current.remoteUrl,
-            intervalSeconds = current.pollInterval.inWholeSeconds.toString(),
-            ignoreSslErrors = current.ignoreSslErrors,
-            theme = current.theme,
-            toastsEnabled = current.toastsEnabled,
-            toastSeconds = current.toastDuration.inWholeSeconds.toString(),
-            soundsEnabled = current.soundsEnabled,
-            soundVolume = current.soundVolume.toFloat(),
-            mutedAll = current.mutedAll,
-            autostart = autostart.isEnabled(),
-        ),
-    )
+    // Últimos valores válidos ya persistidos de los dos campos numéricos. Mientras el usuario
+    // teclea algo inválido en el campo del intervalo o la duración -o lo deja en blanco- y sin
+    // haber hecho commit, un cambio en un toggle no debe arrastrar ese texto roto a `config.json`:
+    // `editAndApply` construye el candidato sobre estos, no sobre lo que haya en el campo.
+    private var lastGoodInterval = current.pollInterval
+    private var lastGoodToast = current.toastDuration
+
+    private val mutableState = MutableStateFlow(stateOf(current))
     val state: StateFlow<SettingsUiState> = mutableState.asStateFlow()
+
+    private fun stateOf(config: AppConfig) = SettingsUiState(
+        remoteUrl = config.remoteUrl,
+        intervalSeconds = config.pollInterval.inWholeSeconds.toString(),
+        ignoreSslErrors = config.ignoreSslErrors,
+        theme = config.theme,
+        toastsEnabled = config.toastsEnabled,
+        toastSeconds = config.toastDuration.inWholeSeconds.toString(),
+        soundsEnabled = config.soundsEnabled,
+        soundVolume = config.soundVolume.toFloat(),
+        mutedAll = config.mutedAll,
+        autostart = autostart.isEnabled(),
+    )
+
+    /**
+     * Repuebla el formulario desde una configuración recién aplicada por fuera -hoy solo
+     * «Restablecer ajustes»-. Sin esto el formulario seguiría mostrando los valores previos
+     * mientras la pantalla está montada, y el primer toggle reconstruiría el candidato sobre
+     * ellos, deshaciendo el restablecido.
+     */
+    fun reload(config: AppConfig) {
+        lastGoodInterval = config.pollInterval
+        lastGoodToast = config.toastDuration
+        mutableState.value = stateOf(config)
+    }
 
     // --- se aplican al instante ---
 
@@ -108,9 +127,15 @@ class SettingsViewModel(
         val seconds = mutableState.value.intervalSeconds.trim().toLongOrNull()
         val error = when {
             seconds == null -> "El intervalo debe ser un número de segundos."
+
             seconds < INTERVAL_MIN -> "El intervalo mínimo es $INTERVAL_MIN s."
+
             seconds > INTERVAL_MAX -> "El intervalo máximo es $INTERVAL_MAX s."
-            else -> apply(configFromForm())
+
+            else -> {
+                lastGoodInterval = seconds.seconds
+                apply(configFromForm())
+            }
         }
         mutableState.value = mutableState.value.copy(intervalError = error)
     }
@@ -123,7 +148,11 @@ class SettingsViewModel(
         val seconds = mutableState.value.toastSeconds.trim().toLongOrNull()
         val error = when {
             seconds == null || seconds < TOAST_MIN || seconds > TOAST_MAX -> "Entre $TOAST_MIN s y $TOAST_MAX s."
-            else -> apply(configFromForm())
+
+            else -> {
+                lastGoodToast = seconds.seconds
+                apply(configFromForm())
+            }
         }
         mutableState.value = mutableState.value.copy(toastError = error)
     }
@@ -135,18 +164,28 @@ class SettingsViewModel(
         apply(configFromForm())
     }
 
+    /**
+     * El candidato a persistir. Los dos campos numéricos solo aportan su valor si está dentro de
+     * rango; si el usuario los dejó a medio teclear, se usa el último válido ya guardado. Así
+     * ningún camino que pase por aquí sin validar antes -`editAndApply`, `onUrlCommit`- puede
+     * escribir un intervalo de 0 s que haga que la app no arranque en el siguiente inicio.
+     */
     private fun configFromForm(): AppConfig {
         val form = mutableState.value
+        val interval = form.intervalSeconds.trim().toLongOrNull()
+            ?.takeIf { it in INTERVAL_MIN..INTERVAL_MAX }?.seconds ?: lastGoodInterval
+        val toast = form.toastSeconds.trim().toLongOrNull()
+            ?.takeIf { it in TOAST_MIN..TOAST_MAX }?.seconds ?: lastGoodToast
         return AppConfig(
             stateFile = stateFile,
             remoteUrl = form.remoteUrl.trim(),
-            pollInterval = (form.intervalSeconds.trim().toLongOrNull() ?: 0L).seconds,
+            pollInterval = interval,
             imageNames = imageNames,
             simulationMode = simulationMode,
             ignoreSslErrors = form.ignoreSslErrors,
             theme = form.theme,
             toastsEnabled = form.toastsEnabled,
-            toastDuration = (form.toastSeconds.trim().toLongOrNull() ?: 0L).seconds,
+            toastDuration = toast,
             soundsEnabled = form.soundsEnabled,
             soundVolume = form.soundVolume.toDouble(),
             mutedAll = form.mutedAll,
