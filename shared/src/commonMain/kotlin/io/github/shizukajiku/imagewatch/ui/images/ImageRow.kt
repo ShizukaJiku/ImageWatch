@@ -182,7 +182,7 @@ private fun RowScope.SkipAndPillCell(skip: String, pillText: String, pillBackgro
             containerColor = pillBackground,
             contentColor = pillForeground,
             width = Layout.rowPill,
-            contentPadding = PaddingValues(vertical = 6.dp),
+            contentPadding = PaddingValues(horizontal = Space.sm, vertical = 6.dp),
             fontFamily = FontFamily.Monospace,
             fontWeight = FontWeight.Bold,
             fontSize = TypeScale.meta,
