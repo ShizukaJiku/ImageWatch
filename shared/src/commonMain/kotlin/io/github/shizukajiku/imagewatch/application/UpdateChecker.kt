@@ -1,5 +1,6 @@
 package io.github.shizukajiku.imagewatch.application
 
+import io.github.shizukajiku.imagewatch.Log
 import io.github.shizukajiku.imagewatch.domain.SemanticVersion
 import io.github.shizukajiku.imagewatch.domain.UpdateManifest
 import io.ktor.client.HttpClient
@@ -29,7 +30,10 @@ class UpdateChecker(
         if (fetched is Failure) return UpdateStatus.CheckFailed(fetched.reason)
 
         val release = runCatching { json.decodeFromString<ReleaseJson>((fetched as Success).text) }
-            .getOrElse { return UpdateStatus.CheckFailed("Respuesta de GitHub inesperada") }
+            .getOrElse {
+                log.warn("La respuesta de GitHub no se pudo parsear", it)
+                return UpdateStatus.CheckFailed("Respuesta de GitHub inesperada")
+            }
 
         val latest = SemanticVersion.parseOrNull(release.tagName)
             ?: return UpdateStatus.CheckFailed("Respuesta de GitHub inesperada")
@@ -70,6 +74,9 @@ class UpdateChecker(
     } catch (e: CancellationException) {
         throw e
     } catch (e: Exception) {
+        // El motivo -DNS, TLS, proxy, timeout- solo se ve aquí: al usuario le llega
+        // «No se pudo contactar con GitHub» sin detalle. Queda en imagewatch.log.
+        log.warn("No se pudo contactar con GitHub ($releasesUrl)", e)
         null
     }
 
@@ -82,4 +89,8 @@ class UpdateChecker(
 
     @Serializable
     private data class AssetJson(val name: String, @SerialName("browser_download_url") val url: String)
+
+    private companion object {
+        private val log = Log("io.github.shizukajiku.imagewatch.application.UpdateChecker")
+    }
 }
