@@ -1,11 +1,11 @@
 name: Tests
 
-# Corre en cada push y en cada pull request: es la red de seguridad continua,
-# separada del pipeline de release para que un push a cualquier rama de
-# trabajo dé feedback rápido sin depender de una etiqueta.
+# Red de seguridad continua, separada del pipeline de release. Corre en cada pull
+# request -el feedback de las ramas de trabajo llega por ahí- y en cada push a
+# main, para cubrir también un push directo que no pase por PR.
 on:
   push:
-    branches: ["**"]
+    branches: [main]
   pull_request:
 
 concurrency:
@@ -41,6 +41,11 @@ jobs:
 
       - name: Cobertura del núcleo (kover)
         run: ./gradlew :shared:koverVerify --no-daemon
+
+      # `:shared:jvmTest` no compila el módulo de escritorio. Sin este paso, un fallo en
+      # Main.kt / ToastWindow.kt / TitleBar.kt no se ve hasta el pipeline de release.
+      - name: Compilar el módulo de escritorio
+        run: ./gradlew :desktopApp:compileKotlin --no-daemon
 
       - name: Publicar resultados de test
         if: always()
