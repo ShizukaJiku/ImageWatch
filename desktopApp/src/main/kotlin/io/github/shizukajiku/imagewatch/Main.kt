@@ -26,9 +26,13 @@ import io.github.shizukajiku.imagewatch.application.ImageSource
 import io.github.shizukajiku.imagewatch.application.PollingController
 import io.github.shizukajiku.imagewatch.application.SilencedImageStore
 import io.github.shizukajiku.imagewatch.application.TrackedImageStore
+import io.github.shizukajiku.imagewatch.application.UpdateChecker
+import io.github.shizukajiku.imagewatch.application.UpdatePhase
+import io.github.shizukajiku.imagewatch.application.UpdateService
 import io.github.shizukajiku.imagewatch.application.VersionPollingService
 import io.github.shizukajiku.imagewatch.config.AppConfig
 import io.github.shizukajiku.imagewatch.config.ThemePreference
+import io.github.shizukajiku.imagewatch.domain.SemanticVersion
 import io.github.shizukajiku.imagewatch.infrastructure.os.WindowsAutostart
 import io.github.shizukajiku.imagewatch.infrastructure.persistence.JsonConfigStore
 import io.github.shizukajiku.imagewatch.infrastructure.persistence.JsonImageStateStore
@@ -39,6 +43,12 @@ import io.github.shizukajiku.imagewatch.infrastructure.remote.HttpClientFactory
 import io.github.shizukajiku.imagewatch.infrastructure.remote.HttpImageSource
 import io.github.shizukajiku.imagewatch.infrastructure.remote.ReloadableImageSource
 import io.github.shizukajiku.imagewatch.infrastructure.remote.SimulatedImageSource
+import io.github.shizukajiku.imagewatch.infrastructure.update.DownloadResult
+import io.github.shizukajiku.imagewatch.infrastructure.update.InstallKind
+import io.github.shizukajiku.imagewatch.infrastructure.update.MsiUpdateInstaller
+import io.github.shizukajiku.imagewatch.infrastructure.update.UpdateDownloader
+import io.github.shizukajiku.imagewatch.infrastructure.update.UpdateHttpClient
+import io.github.shizukajiku.imagewatch.infrastructure.update.detectInstallKind
 import io.github.shizukajiku.imagewatch.ui.AlertIconPainter
 import io.github.shizukajiku.imagewatch.ui.AppIconPainter
 import io.github.shizukajiku.imagewatch.ui.components.TitleBar
@@ -48,6 +58,7 @@ import io.github.shizukajiku.imagewatch.ui.images.ImagesScreen
 import io.github.shizukajiku.imagewatch.ui.images.ImagesViewModel
 import io.github.shizukajiku.imagewatch.ui.settings.SettingsScreen
 import io.github.shizukajiku.imagewatch.ui.settings.SettingsViewModel
+import io.github.shizukajiku.imagewatch.ui.settings.UpdateUiState
 import io.github.shizukajiku.imagewatch.ui.sound.Sound
 import io.github.shizukajiku.imagewatch.ui.sound.Sounds
 import io.github.shizukajiku.imagewatch.ui.theme.ImageWatchTheme
@@ -60,6 +71,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.launch
 import okio.FileSystem
 import okio.Path
 import okio.Path.Companion.toPath
@@ -165,6 +177,26 @@ private class Wiring {
         windowFocused = { windowFocused.value },
     )
 
+    /** MSI vs portable. El portable no ofrece autoactualización -su usuario descarga a mano-. */
+    val installKind: InstallKind = detectInstallKind()
+
+    // Cliente propio del actualizador: TLS estricto siempre, sin compartir con el del registro de
+    // imágenes -que puede tener la validación apagada por `ignoreSslErrors`-.
+    private val updateHttpClient = UpdateHttpClient.create()
+
+    /** `~/.notifier/updates` — misma raíz por usuario que `config.json`. */
+    private val updatesDir: Path =
+        (configFromEnvironment().stateFile.toPath().parent ?: ".".toPath()) / "updates"
+
+    val updateService = UpdateService(
+        checker = UpdateChecker(updateHttpClient),
+        currentVersion = SemanticVersion.parseOrNull(BuildInfo.VERSION) ?: SemanticVersion(0, 0, 0),
+        scope = imagesScope,
+    )
+
+    private val downloader = UpdateDownloader(updateHttpClient, updatesDir)
+    private val installer = MsiUpdateInstaller(updatesDir)
+
     init {
         val seed = configFromEnvironment()
         val seedFile = seed.stateFile.toPath()
@@ -198,6 +230,10 @@ private class Wiring {
             )
         controller = PollingController(service, loaded.pollInterval)
         sounds.preload()
+        // El portable no se autoactualiza; no tiene sentido consultar GitHub cada arranque.
+        if (installKind == InstallKind.MSI) {
+            updateService.start()
+        }
     }
 
     /**
@@ -290,6 +326,37 @@ private class Wiring {
         onDone()
     }
 
+    /**
+     * Desde `Available`/`Failed`: descarga y verifica el MSI; al terminar pasa a `ReadyToApply` o
+     * a `Failed`. Desde `ReadyToApply`: escribe el script de relevo, lo lanza, y llama a
+     * [onReadyToClose] para que la app se cierre. No hace nada si no hay manifiesto pendiente o si
+     * preparar la instalación falla -en ese caso la app **no** se cierra-.
+     */
+    fun applyUpdate(onReadyToClose: () -> Unit) {
+        val manifest = updateService.pendingManifest ?: return
+        when (updateService.phase.value) {
+            is UpdatePhase.Available, is UpdatePhase.Failed -> {
+                imagesScope.launch {
+                    when (val result = downloader.download(manifest) { updateService.reportDownloadProgress(it) }) {
+                        is DownloadResult.Ready -> updateService.markReadyToApply()
+                        is DownloadResult.Failed -> updateService.reportDownloadFailed(result.reason)
+                    }
+                }
+            }
+
+            is UpdatePhase.ReadyToApply -> {
+                val msi = updatesDir / "ImageWatch-${manifest.latestVersion}.msi"
+                installer.apply(msi, ProcessHandle.current().pid())
+                    .onSuccess { onReadyToClose() }
+                    .onFailure { updateService.reportDownloadFailed("No se pudo preparar la instalación") }
+            }
+
+            else -> Unit
+        }
+    }
+
+    fun closeUpdates() = updateHttpClient.close()
+
     private fun sourceFor(config: AppConfig): ImageSource = when {
         config.simulationMode -> SimulatedImageSource(Clock.System, SIMULATED_BUMP_EVERY)
 
@@ -347,6 +414,7 @@ fun main(args: Array<String>) {
             viewModel.close()
             wiring.controller.close()
             wiring.sounds.close()
+            wiring.closeUpdates()
             wiring.toastScope.cancel()
             wiring.imagesScope.cancel()
             exitApplication()
@@ -543,6 +611,13 @@ private fun SettingsPane(
     val viewModel = remember { SettingsViewModel(config, wiring::applyConfig, wiring.autostart) }
     val state by viewModel.state.collectAsState()
 
+    val updatePhase by wiring.updateService.phase.collectAsState()
+    val updateUi = UpdateUiState(
+        currentVersion = BuildInfo.VERSION,
+        phase = updatePhase,
+        portable = wiring.installKind == InstallKind.PORTABLE,
+    )
+
     SettingsScreen(
         state = state,
         polling = polling,
@@ -570,6 +645,9 @@ private fun SettingsPane(
             viewModel.reload(wiring.config.value)
         },
         onWipeLocalData = { wiring.wipeLocalData(onExit) },
+        updateState = updateUi,
+        onCheckUpdates = wiring.updateService::checkNow,
+        onApplyUpdate = { wiring.applyUpdate(onReadyToClose = onExit) },
         onBack = onBack,
     )
 }

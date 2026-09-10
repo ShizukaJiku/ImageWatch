@@ -34,6 +34,7 @@ enum class AppSvg(private val file: String) {
     KEBAB("kebab"),
     ARROW_UP("arrow-up"),
     COPY("copy"),
+    DOWNLOAD("download"),
     ;
 
     val resourcePath: String get() = "/icons/$file.svg"

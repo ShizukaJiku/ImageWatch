@@ -22,6 +22,7 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
@@ -43,6 +44,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import io.github.shizukajiku.imagewatch.application.UpdatePhase
 import io.github.shizukajiku.imagewatch.config.ThemePreference
 import io.github.shizukajiku.imagewatch.ui.components.AppSvg
 import io.github.shizukajiku.imagewatch.ui.components.IwIconButton
@@ -60,7 +62,7 @@ import io.github.shizukajiku.imagewatch.ui.theme.TypeScale
 import io.github.shizukajiku.imagewatch.ui.theme.focusRing
 import io.github.shizukajiku.imagewatch.ui.theme.mutedText
 
-private enum class Confirm { RESET, WIPE }
+private enum class Confirm { RESET, WIPE, UPDATE }
 
 @Composable
 fun SettingsScreen(
@@ -87,9 +89,18 @@ fun SettingsScreen(
     onAutostartChange: (Boolean) -> Unit,
     onResetSettings: () -> Unit,
     onWipeLocalData: () -> Unit,
+    updateState: UpdateUiState,
+    onCheckUpdates: () -> Unit,
+    onApplyUpdate: () -> Unit,
     onBack: () -> Unit,
 ) {
     var confirming by remember { mutableStateOf<Confirm?>(null) }
+
+    // Desde `Available`/`Failed` el botón dispara la descarga sin más; desde `ReadyToApply` -que ya
+    // implica cerrar la app- pasa antes por el diálogo de confirmación.
+    val requestApply = {
+        if (updateState.phase is UpdatePhase.ReadyToApply) confirming = Confirm.UPDATE else onApplyUpdate()
+    }
 
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
         Row(
@@ -239,6 +250,10 @@ fun SettingsScreen(
             }
         }
 
+        Box(Modifier.fillMaxWidth().padding(horizontal = Space.xl, vertical = Space.sm)) {
+            UpdatesCard(updateState, onCheckUpdates, requestApply)
+        }
+
         Row(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(Space.sm),
@@ -269,6 +284,19 @@ fun SettingsScreen(
     }
 
     when (confirming) {
+        Confirm.UPDATE -> ConfirmDialog(
+            title = "Instalar la actualización",
+            body = "La aplicación se cerrará para instalar y volverá a abrirse sola. Cierra lo que tengas a " +
+                "medias antes de continuar.",
+            lost = emptyList(),
+            confirmLabel = "Instalar y reiniciar",
+            onDismiss = { confirming = null },
+            onConfirm = {
+                confirming = null
+                onApplyUpdate()
+            },
+        )
+
         Confirm.RESET -> ConfirmDialog(
             title = "Restablecer ajustes",
             body = "Los ajustes vuelven a sus valores de fábrica. Las imágenes vigiladas y su versión vista no " +
@@ -323,6 +351,108 @@ private fun SettingsCard(title: String, content: @Composable ColumnScope.() -> U
 @Composable
 private fun FieldLabel(text: String) {
     Text(text, fontSize = TypeScale.meta, color = MaterialTheme.colorScheme.onSurfaceVariant)
+}
+
+@Composable
+private fun UpdatesCard(state: UpdateUiState, onCheck: () -> Unit, onApply: () -> Unit) {
+    SettingsCard("Actualizaciones") {
+        Text("Versión actual: ${state.currentVersion}", fontSize = TypeScale.body)
+
+        if (state.portable) {
+            Text(
+                "Esta es la versión portable. Descarga la nueva desde la página de Releases de GitHub.",
+                fontSize = TypeScale.caption,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            return@SettingsCard
+        }
+
+        when (val phase = state.phase) {
+            UpdatePhase.Idle, UpdatePhase.UpToDate -> {
+                FootPill(
+                    "Buscar actualizaciones",
+                    MaterialTheme.colorScheme.surfaceVariant,
+                    MaterialTheme.colorScheme.onSurfaceVariant,
+                    onClick = onCheck,
+                    leadingIcon = AppSvg.REFRESH,
+                )
+                HelpLine(
+                    if (phase == UpdatePhase.UpToDate) "Estás en la última versión." else "",
+                    isError = false,
+                )
+            }
+
+            UpdatePhase.Checking -> HelpLine("Comprobando…", isError = false)
+
+            is UpdatePhase.Available -> {
+                Text(
+                    "Versión ${phase.version} disponible",
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = TypeScale.body,
+                )
+                if (phase.notes.isNotBlank()) {
+                    Box(
+                        Modifier.fillMaxWidth()
+                            .height(120.dp)
+                            .background(
+                                MaterialTheme.colorScheme.surfaceVariant,
+                                RoundedCornerShape(Radius.sm),
+                            )
+                            .verticalScroll(rememberScrollState())
+                            .padding(Space.md),
+                    ) {
+                        Text(
+                            phase.notes,
+                            fontSize = TypeScale.caption,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+                FootPill(
+                    "Actualizar ahora",
+                    MaterialTheme.colorScheme.primaryContainer,
+                    MaterialTheme.colorScheme.onPrimaryContainer,
+                    onClick = onApply,
+                    leadingIcon = AppSvg.DOWNLOAD,
+                )
+            }
+
+            is UpdatePhase.Downloading -> {
+                if (phase.fraction != null) {
+                    LinearProgressIndicator(
+                        progress = { phase.fraction },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    HelpLine("Descargando… ${(phase.fraction * 100).toInt()} %", isError = false)
+                } else {
+                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                    HelpLine("Descargando…", isError = false)
+                }
+            }
+
+            is UpdatePhase.ReadyToApply -> {
+                Text("Listo para instalar ${phase.version}", fontSize = TypeScale.body)
+                FootPill(
+                    "Instalar y reiniciar",
+                    MaterialTheme.colorScheme.primaryContainer,
+                    MaterialTheme.colorScheme.onPrimaryContainer,
+                    onClick = onApply,
+                    leadingIcon = AppSvg.DOWNLOAD,
+                )
+            }
+
+            is UpdatePhase.Failed -> {
+                FootPill(
+                    "Buscar actualizaciones",
+                    MaterialTheme.colorScheme.surfaceVariant,
+                    MaterialTheme.colorScheme.onSurfaceVariant,
+                    onClick = onCheck,
+                    leadingIcon = AppSvg.REFRESH,
+                )
+                HelpLine(phase.message, isError = true)
+            }
+        }
+    }
 }
 
 /** Línea de ayuda de altura reservada: al fallar solo cambian el texto y el color; nada baja. */
