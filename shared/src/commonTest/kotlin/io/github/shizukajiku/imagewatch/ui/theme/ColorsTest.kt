@@ -37,4 +37,17 @@ class ColorsTest {
         assertNotEquals(ghostBackground(dark = true), ghostBackground(dark = false))
         assertNotEquals(mutedText(dark = true), mutedText(dark = false))
     }
+
+    @Test
+    fun `la etiqueta del estado pendiente es la del Blueprint`() {
+        assertEquals("Versión nueva", statusColors(ImageStatus.PENDING, dark = true).label)
+        assertEquals("Versión nueva", statusColors(ImageStatus.PENDING, dark = false).label)
+    }
+
+    @Test
+    fun `el contenedor de acento terciario esta definido y responde al tema`() {
+        assertEquals(androidx.compose.ui.graphics.Color(0xFF2B3557), DarkColors.tertiaryContainer)
+        assertEquals(androidx.compose.ui.graphics.Color(0xFFDDE3FF), LightColors.tertiaryContainer)
+        assertNotEquals(DarkColors.tertiaryContainer, LightColors.tertiaryContainer)
+    }
 }

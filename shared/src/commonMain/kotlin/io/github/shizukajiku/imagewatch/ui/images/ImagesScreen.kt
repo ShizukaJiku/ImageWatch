@@ -1,7 +1,10 @@
 package io.github.shizukajiku.imagewatch.ui.images
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -21,48 +24,54 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Button
-import androidx.compose.material3.IconButton
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.focus.FocusDirection
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import io.github.shizukajiku.imagewatch.domain.ImageStatus
 import io.github.shizukajiku.imagewatch.ui.components.AppSvg
+import io.github.shizukajiku.imagewatch.ui.components.IwIconButton
+import io.github.shizukajiku.imagewatch.ui.components.Pill
 import io.github.shizukajiku.imagewatch.ui.components.SvgIcon
 import io.github.shizukajiku.imagewatch.ui.theme.IconSize
+import io.github.shizukajiku.imagewatch.ui.theme.Layout
 import io.github.shizukajiku.imagewatch.ui.theme.LocalIsDark
+import io.github.shizukajiku.imagewatch.ui.theme.Motion
 import io.github.shizukajiku.imagewatch.ui.theme.Radius
 import io.github.shizukajiku.imagewatch.ui.theme.Space
+import io.github.shizukajiku.imagewatch.ui.theme.TabularNums
 import io.github.shizukajiku.imagewatch.ui.theme.TypeScale
+import io.github.shizukajiku.imagewatch.ui.theme.focusRing
 import io.github.shizukajiku.imagewatch.ui.theme.ghostBackground
 import io.github.shizukajiku.imagewatch.ui.theme.mutedText
 import io.github.shizukajiku.imagewatch.ui.theme.statusColors
-
-// Ancho fijo del buscador: no es un paso de la escala de espaciado, es el ancho que le da sitio
-// al indicador de sondeo y al boton de agregar en la misma fila.
-private val SEARCH_WIDTH = 260.dp
-
-// Pie de la ventana: el estado de la comprobacion vive en 92 px y la nota en 260 px, ninguno de
-// los dos en la escala de Space -son los huecos que fija el diseño para que "Activo", "Detenido"
-// y "Sin conexión" no muevan la nota de al lado-.
-private val FOOT_STATE_WIDTH = 92.dp
-private val FOOT_NOTE_WIDTH = 260.dp
-private val FOOT_MUTED_WIDTH = 148.dp
 
 /** Una entrada de la lista: cabecera de sección o fila. Un único `LazyColumn` para que alta, baja
  * y reordenación sigan animando con `animateItem()`, aunque la lista se vea como tres secciones. */
@@ -98,18 +107,16 @@ fun ImagesScreen(
     onSearchChange: (String) -> Unit,
     onAdd: () -> Unit,
     onAcknowledge: (String) -> Unit,
-    onUndoAcknowledge: (String) -> Unit,
     onAcknowledgeAll: () -> Unit,
     onRefresh: (String?) -> Unit,
-    onEdit: (String) -> Unit,
     onDelete: (String) -> Unit,
     onOpenSettings: () -> Unit,
     onToggleMuteAll: () -> Unit,
     onToggleSilence: (String) -> Unit,
-    onPromoteQueued: () -> Unit,
+    onToggleExpand: (String) -> Unit,
 ) {
     Column(Modifier.fillMaxSize()) {
-        Header(state, mutedAll, onSearchChange, onAdd, onOpenSettings, onAcknowledgeAll, onRefresh, onToggleMuteAll)
+        Header(state, mutedAll, onSearchChange, onAdd, onOpenSettings, onToggleMuteAll)
 
         if (state.total == 0) {
             // Solo «Sin imágenes vigiladas» es un vacío de verdad -no hay nada en local que
@@ -119,18 +126,20 @@ fun ImagesScreen(
         } else {
             NoticeBanner(state) { onRefresh(null) }
 
-            AnimatedVisibility(state.queuedCount > 0, enter = expandVertically(), exit = shrinkVertically()) {
-                Box(Modifier.padding(horizontal = Space.xl, vertical = Space.sm)) {
-                    QueuedBanner(state.queuedCount, onPromoteQueued)
-                }
-            }
-
-            var okOpen by rememberSaveable { mutableStateOf(true) }
-            val listState = rememberLazyListState()
-
             val pendingRows = state.rows.filter { it.status == ImageStatus.PENDING }
             val errorRows = state.rows.filter { it.status == ImageStatus.ERROR }
             val okRows = state.rows.filter { it.status != ImageStatus.PENDING && it.status != ImageStatus.ERROR }
+
+            // Blueprint: «Por defecto plegada por encima de 12 imágenes». `rememberSaveable`
+            // conserva la elección posterior del usuario; el valor inicial solo decide el arranque.
+            var okOpen by rememberSaveable { mutableStateOf(okRows.size <= 12) }
+            val listState = rememberLazyListState()
+
+            // Qué fila tiene el foco de teclado ahora mismo -no cuál está desplegada, ese es
+            // `state.expandedRow`-. Solo lo necesita Espacio, que decide a qué imagen reconocer;
+            // Enter y Escape no necesitan saber el nombre.
+            var focusedRowName by remember { mutableStateOf<String?>(null) }
+            val focusManager = LocalFocusManager.current
 
             val entries = buildList {
                 if (pendingRows.isNotEmpty()) {
@@ -160,7 +169,52 @@ fun ImagesScreen(
             }
 
             LazyColumn(
-                Modifier.weight(1f).fillMaxWidth(),
+                Modifier.weight(1f).fillMaxWidth().onPreviewKeyEvent { event ->
+                    if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+                    when (event.key) {
+                        Key.DirectionDown -> {
+                            focusManager.moveFocus(FocusDirection.Down)
+                            true
+                        }
+
+                        Key.DirectionUp -> {
+                            focusManager.moveFocus(FocusDirection.Up)
+                            true
+                        }
+
+                        Key.Spacebar -> {
+                            val name = focusedRowName
+                            if (name != null && pendingRows.any { it.name == name }) {
+                                onAcknowledge(name)
+                                true
+                            } else {
+                                false
+                            }
+                        }
+
+                        Key.Enter, Key.NumPadEnter -> {
+                            val name = focusedRowName
+                            if (name != null) {
+                                onToggleExpand(name)
+                                true
+                            } else {
+                                false
+                            }
+                        }
+
+                        Key.Escape -> {
+                            val open = state.expandedRow
+                            if (open != null) {
+                                onToggleExpand(open)
+                                true
+                            } else {
+                                false
+                            }
+                        }
+
+                        else -> false
+                    }
+                },
                 state = listState,
                 contentPadding = PaddingValues(
                     start = Space.xl,
@@ -170,24 +224,35 @@ fun ImagesScreen(
                 verticalArrangement = Arrangement.spacedBy(Space.sm),
             ) {
                 items(entries, key = { it.key() }) { entry ->
+                    // Entrada, salida y reordenación de fila con la curva de énfasis (Blueprint 06:
+                    // «400 ms con énfasis»), en vez del spec por defecto de `animateItem`.
+                    val itemMotion = Modifier.animateItem(
+                        fadeInSpec = tween(Motion.EMPHASIS),
+                        fadeOutSpec = tween(Motion.EMPHASIS),
+                        placementSpec = tween(Motion.EMPHASIS, easing = Motion.emphasisEasing),
+                    )
                     when (entry) {
                         Entry.PendingHeader ->
-                            PendingSectionHeader(pendingRows.size, onSearchChange)
+                            PendingSectionHeader(pendingRows.size, onAcknowledgeAll)
 
                         is Entry.PendingItem ->
-                            if (entry.row.pendingUndo) {
-                                UndoRow(entry.row.name, { onUndoAcknowledge(entry.row.name) }, Modifier.animateItem())
-                            } else {
-                                PendingRow(
-                                    row = entry.row,
-                                    onAcknowledge = { onAcknowledge(entry.row.name) },
-                                    onRefresh = { onRefresh(entry.row.name) },
-                                    onEdit = { onEdit(entry.row.name) },
-                                    onToggleSilence = { onToggleSilence(entry.row.name) },
-                                    onDelete = { onDelete(entry.row.name) },
-                                    modifier = Modifier.animateItem(),
-                                )
-                            }
+                            PendingRow(
+                                row = entry.row,
+                                expanded = state.expandedRow == entry.row.name,
+                                onToggleExpand = { onToggleExpand(entry.row.name) },
+                                onAcknowledge = { onAcknowledge(entry.row.name) },
+                                onRefresh = { onRefresh(entry.row.name) },
+                                onToggleSilence = { onToggleSilence(entry.row.name) },
+                                onDelete = { onDelete(entry.row.name) },
+                                onFocusedChange = { focused ->
+                                    focusedRowName = if (focused) {
+                                        entry.row.name
+                                    } else {
+                                        focusedRowName.takeUnless { it == entry.row.name }
+                                    }
+                                },
+                                modifier = itemMotion,
+                            )
 
                         Entry.ErrorHeader ->
                             ErrorSectionHeader(errorRows.size) { onRefresh(null) }
@@ -195,11 +260,19 @@ fun ImagesScreen(
                         is Entry.ErrorItem ->
                             ErrorRow(
                                 row = entry.row,
+                                expanded = state.expandedRow == entry.row.name,
+                                onToggleExpand = { onToggleExpand(entry.row.name) },
                                 onRefresh = { onRefresh(entry.row.name) },
-                                onEdit = { onEdit(entry.row.name) },
                                 onToggleSilence = { onToggleSilence(entry.row.name) },
                                 onDelete = { onDelete(entry.row.name) },
-                                modifier = Modifier.animateItem(),
+                                onFocusedChange = { focused ->
+                                    focusedRowName = if (focused) {
+                                        entry.row.name
+                                    } else {
+                                        focusedRowName.takeUnless { it == entry.row.name }
+                                    }
+                                },
+                                modifier = itemMotion,
                             )
 
                         is Entry.OkHeader ->
@@ -224,12 +297,19 @@ fun ImagesScreen(
                                 pillBackground = palette.background,
                                 pillForeground = palette.foreground,
                                 verifying = state.verifying,
-                                onAcknowledge = null,
+                                expanded = state.expandedRow == entry.row.name,
+                                onToggleExpand = { onToggleExpand(entry.row.name) },
                                 onRefresh = { onRefresh(entry.row.name) },
-                                onEdit = { onEdit(entry.row.name) },
                                 onToggleSilence = { onToggleSilence(entry.row.name) },
                                 onDelete = { onDelete(entry.row.name) },
-                                modifier = Modifier.animateItem(),
+                                onFocusedChange = { focused ->
+                                    focusedRowName = if (focused) {
+                                        entry.row.name
+                                    } else {
+                                        focusedRowName.takeUnless { it == entry.row.name }
+                                    }
+                                },
+                                modifier = itemMotion,
                             )
                         }
                     }
@@ -248,10 +328,10 @@ private fun Header(
     onSearchChange: (String) -> Unit,
     onAdd: () -> Unit,
     onOpenSettings: () -> Unit,
-    onAcknowledgeAll: () -> Unit,
-    onRefresh: (String?) -> Unit,
     onToggleMuteAll: () -> Unit,
 ) {
+    var searchExpanded by rememberSaveable { mutableStateOf(state.search.isNotEmpty()) }
+
     Column(Modifier.padding(start = Space.xl, top = Space.lg, end = Space.xl, bottom = Space.md)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
@@ -261,60 +341,91 @@ private fun Header(
                     "${state.pending} imágenes que atender",
                     fontWeight = FontWeight.Bold,
                     fontSize = TypeScale.title,
+                    style = TabularNums,
                 )
                 Text(
-                    "de ${state.total} vigiladas · comprobando cada ${state.pollIntervalSeconds}s",
+                    "de ${state.total} vigiladas · comprobando cada ${state.pollIntervalSeconds} s",
                     fontSize = TypeScale.meta,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = TabularNums,
                 )
             }
-            // Comprobar todas ya. Junto a los demas iconos y no en la barra de sondeo: es una
-            // accion sobre la lista entera, como agregar, no un control del calendario.
-            IconButton({ onRefresh(null) }) {
-                SvgIcon(AppSvg.REFRESH, MaterialTheme.colorScheme.onSurfaceVariant, Modifier.size(IconSize.lg))
-            }
-            // Solo aparece si hay algo que dar por visto: un boton que no hace nada ensena a
-            // desconfiar de los botones.
-            if (state.canAcknowledgeAll) {
-                IconButton(onAcknowledgeAll) {
-                    SvgIcon(AppSvg.CHECK_ALL, MaterialTheme.colorScheme.primary, Modifier.size(IconSize.lg))
+            // Buscador replegado a icono (Blueprint «Cabecera de la bandeja»): se expande a una
+            // píldora de 34 dp en su sitio -no empuja el titular ni crece en vertical-. Se
+            // repliega al perder el foco solo si está vacío y ya llegó a tenerlo: así no colapsa
+            // en el fotograma en que aparece, antes de que el foco aterrice.
+            if (searchExpanded) {
+                val searchFocus = remember { FocusRequester() }
+                var hasHadFocus by remember { mutableStateOf(false) }
+                Surface(
+                    color = MaterialTheme.colorScheme.surfaceVariant,
+                    shape = RoundedCornerShape(Radius.pill),
+                    modifier = Modifier.width(Layout.searchPill).height(34.dp),
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(Space.sm),
+                        modifier = Modifier.padding(horizontal = Space.md),
+                    ) {
+                        SvgIcon(
+                            AppSvg.SEARCH,
+                            MaterialTheme.colorScheme.onSurfaceVariant,
+                            Modifier.size(IconSize.sm),
+                        )
+                        BasicTextField(
+                            value = state.search,
+                            onValueChange = onSearchChange,
+                            singleLine = true,
+                            textStyle = LocalTextStyle.current.copy(
+                                color = MaterialTheme.colorScheme.onSurface,
+                                fontSize = TypeScale.body,
+                            ),
+                            cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                            modifier = Modifier
+                                .weight(1f)
+                                .focusRequester(searchFocus)
+                                .onFocusChanged {
+                                    if (it.isFocused) {
+                                        hasHadFocus = true
+                                    } else if (hasHadFocus && state.search.isEmpty()) {
+                                        searchExpanded = false
+                                    }
+                                },
+                            decorationBox = { inner ->
+                                if (state.search.isEmpty()) {
+                                    Text(
+                                        "Buscar imagen…",
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        fontSize = TypeScale.body,
+                                    )
+                                }
+                                inner()
+                            },
+                        )
+                    }
                 }
+                LaunchedEffect(Unit) { searchFocus.requestFocus() }
+            } else {
+                IwIconButton(AppSvg.SEARCH, { searchExpanded = true }, iconSize = IconSize.md)
             }
             // Atajo de «silenciar todos los avisos»: la campana se tacha y se apaga sobre fondo
             // marcado, el mismo interruptor que vive en Ajustes → Avisos.
-            Surface(
-                color = if (mutedAll) MaterialTheme.colorScheme.surfaceVariant else Color.Transparent,
-                shape = CircleShape,
-            ) {
-                IconButton(onToggleMuteAll) {
-                    val tint = if (mutedAll) {
-                        MaterialTheme.colorScheme.onSurface
-                    } else {
-                        MaterialTheme.colorScheme.onSurfaceVariant
-                    }
-                    SvgIcon(if (mutedAll) AppSvg.BELL_OFF else AppSvg.BELL, tint, Modifier.size(IconSize.lg))
-                }
-            }
-            IconButton(onOpenSettings) {
-                SvgIcon(AppSvg.GEAR, MaterialTheme.colorScheme.onSurfaceVariant, Modifier.size(IconSize.lg))
-            }
-            Button(onAdd, shape = RoundedCornerShape(Radius.pill)) {
-                SvgIcon(AppSvg.PLUS, MaterialTheme.colorScheme.onPrimary, Modifier.size(IconSize.sm))
-                Text("  Agregar imagen")
-            }
+            IwIconButton(
+                icon = if (mutedAll) AppSvg.BELL_OFF else AppSvg.BELL,
+                onClick = onToggleMuteAll,
+                toggledOn = mutedAll,
+            )
+            IwIconButton(AppSvg.GEAR, onOpenSettings)
+            Pill(
+                text = "Agregar",
+                containerColor = MaterialTheme.colorScheme.primary,
+                contentColor = MaterialTheme.colorScheme.onPrimary,
+                onClick = onAdd,
+                leadingIcon = AppSvg.PLUS,
+                contentPadding = PaddingValues(horizontal = Space.lg, vertical = Space.sm),
+                fontSize = TypeScale.body,
+            )
         }
-
-        OutlinedTextField(
-            value = state.search,
-            onValueChange = onSearchChange,
-            placeholder = { Text("Buscar imagen…") },
-            leadingIcon = {
-                SvgIcon(AppSvg.SEARCH, MaterialTheme.colorScheme.onSurfaceVariant, Modifier.size(IconSize.sm))
-            },
-            singleLine = true,
-            shape = RoundedCornerShape(Radius.pill),
-            modifier = Modifier.padding(top = Space.md).width(SEARCH_WIDTH),
-        )
     }
 }
 
@@ -327,9 +438,15 @@ private fun Header(
 private fun NoticeBanner(state: ImagesUiState, onRetry: () -> Unit) {
     val dark = LocalIsDark.current
     val disconnected = state.allFailing
-    val nadaQueAtender = !disconnected && state.pending == 0 && state.errorCount == 0 && state.queuedCount == 0
+    val nadaQueAtender = !disconnected && state.pending == 0 && state.errorCount == 0
 
-    AnimatedVisibility(disconnected || nadaQueAtender, enter = expandVertically(), exit = shrinkVertically()) {
+    AnimatedVisibility(
+        disconnected || nadaQueAtender,
+        enter = expandVertically(tween(Motion.EMPHASIS, easing = Motion.emphasisEasing)) +
+            fadeIn(tween(Motion.EMPHASIS)),
+        exit = shrinkVertically(tween(Motion.EMPHASIS, easing = Motion.emphasisEasing)) +
+            fadeOut(tween(Motion.EMPHASIS)),
+    ) {
         val palette = statusColors(if (disconnected) ImageStatus.ERROR else ImageStatus.OK, dark)
         Box(Modifier.padding(start = Space.xl, top = Space.sm, end = Space.xl)) {
             Surface(
@@ -342,6 +459,9 @@ private fun NoticeBanner(state: ImagesUiState, onRetry: () -> Unit) {
                     horizontalArrangement = Arrangement.spacedBy(Space.sm),
                     modifier = Modifier.padding(horizontal = Space.lg, vertical = 11.dp),
                 ) {
+                    if (!disconnected) {
+                        SvgIcon(AppSvg.CHECK, palette.foreground, Modifier.size(IconSize.sm))
+                    }
                     Text(
                         if (disconnected) "No se puede acceder al registry" else "Nada que atender",
                         color = palette.foreground,
@@ -362,19 +482,12 @@ private fun NoticeBanner(state: ImagesUiState, onRetry: () -> Unit) {
                     )
                     Spacer(Modifier.weight(1f))
                     if (disconnected) {
-                        Surface(
-                            color = MaterialTheme.colorScheme.surfaceVariant,
-                            shape = RoundedCornerShape(Radius.pill),
+                        Pill(
+                            text = "Reintentar ahora",
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                            contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
                             onClick = onRetry,
-                        ) {
-                            Text(
-                                "Reintentar ahora",
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                fontSize = TypeScale.meta,
-                                fontWeight = FontWeight.SemiBold,
-                                modifier = Modifier.padding(horizontal = Space.md, vertical = Space.xs + 1.dp),
-                            )
-                        }
+                        )
                     }
                 }
             }
@@ -382,49 +495,19 @@ private fun NoticeBanner(state: ImagesUiState, onRetry: () -> Unit) {
     }
 }
 
-/** «N novedades nuevas — Ponerlas arriba»: lo que llega mientras se mira la lista espera aquí. */
 @Composable
-private fun QueuedBanner(count: Int, onPromote: () -> Unit) {
-    Surface(
-        color = MaterialTheme.colorScheme.primaryContainer,
-        shape = RoundedCornerShape(Radius.pill),
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(Space.sm),
-            modifier = Modifier.padding(start = Space.lg, top = Space.sm, bottom = Space.sm, end = Space.sm),
-        ) {
-            SvgIcon(AppSvg.ARROW_UP, MaterialTheme.colorScheme.onPrimaryContainer, Modifier.size(IconSize.sm))
-            Text(
-                if (count == 1) "1 novedad nueva" else "$count novedades nuevas",
-                color = MaterialTheme.colorScheme.onPrimaryContainer,
-                fontWeight = FontWeight.SemiBold,
-                fontSize = TypeScale.meta,
-            )
-            Spacer(Modifier.weight(1f))
-            Surface(
-                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.5f),
-                shape = RoundedCornerShape(Radius.pill),
-                onClick = onPromote,
-            ) {
-                Text(
-                    "Ponerlas arriba",
-                    color = MaterialTheme.colorScheme.onPrimaryContainer,
-                    fontWeight = FontWeight.SemiBold,
-                    fontSize = TypeScale.meta,
-                    modifier = Modifier.padding(horizontal = Space.md, vertical = Space.xs + 1.dp),
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun PendingSectionHeader(count: Int, onSearchChange: (String) -> Unit) {
+private fun PendingSectionHeader(count: Int, onAcknowledgeAll: () -> Unit) {
     val palette = statusColors(ImageStatus.PENDING, LocalIsDark.current)
     SectionHeader(palette.foreground, "Versión nueva", count) {
-        HeaderChip("Ver todas") { onSearchChange("") }
+        // Blueprint (mapa de acciones): «Aplica «Visto» a todas las filas de la sección en una
+        // sola escritura». Antes limpiaba el buscador, que no es lo que el chip promete.
+        Pill(
+            text = "Ver todas",
+            containerColor = MaterialTheme.colorScheme.primaryContainer,
+            contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+            onClick = onAcknowledgeAll,
+            leadingIcon = AppSvg.CHECK_ALL,
+        )
     }
 }
 
@@ -432,7 +515,13 @@ private fun PendingSectionHeader(count: Int, onSearchChange: (String) -> Unit) {
 private fun ErrorSectionHeader(count: Int, onRetryAll: () -> Unit) {
     val palette = statusColors(ImageStatus.ERROR, LocalIsDark.current)
     SectionHeader(palette.foreground, "No se pudo verificar", count) {
-        HeaderChip("Reintentar", onClick = onRetryAll)
+        Pill(
+            text = "Reintentar",
+            containerColor = MaterialTheme.colorScheme.primaryContainer,
+            contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+            onClick = onRetryAll,
+            leadingIcon = AppSvg.REFRESH,
+        )
     }
 }
 
@@ -446,7 +535,7 @@ private fun OkSectionHeader(open: Boolean, count: Int, names: String, trace: Str
         color = ghostBackground(dark),
         shape = RoundedCornerShape(Radius.md),
         onClick = onToggle,
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth().focusRing(Radius.md),
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
@@ -460,7 +549,7 @@ private fun OkSectionHeader(open: Boolean, count: Int, names: String, trace: Str
             )
             Box(Modifier.size(8.dp).background(palette.foreground, CircleShape))
             Text("Al día", fontSize = TypeScale.body, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Text(count.toString(), fontSize = TypeScale.meta, color = mutedText(dark))
+            Text(count.toString(), fontSize = TypeScale.meta, color = mutedText(dark), style = TabularNums)
             if (!open && names.isNotEmpty()) {
                 Text(
                     names,
@@ -495,26 +584,14 @@ private fun SectionHeader(dotColor: Color, title: String, count: Int, trailing: 
     ) {
         Box(Modifier.size(8.dp).background(dotColor, CircleShape))
         Text(title, fontWeight = FontWeight.Bold, fontSize = TypeScale.body, color = dotColor)
-        Text(count.toString(), fontSize = TypeScale.meta, color = mutedText(LocalIsDark.current))
+        Text(
+            count.toString(),
+            fontSize = TypeScale.meta,
+            color = mutedText(LocalIsDark.current),
+            style = TabularNums,
+        )
         Spacer(Modifier.weight(1f))
         trailing()
-    }
-}
-
-@Composable
-private fun HeaderChip(text: String, onClick: () -> Unit) {
-    Surface(
-        color = MaterialTheme.colorScheme.primaryContainer,
-        shape = RoundedCornerShape(Radius.pill),
-        onClick = onClick,
-    ) {
-        Text(
-            text,
-            color = MaterialTheme.colorScheme.onPrimaryContainer,
-            fontWeight = FontWeight.SemiBold,
-            fontSize = TypeScale.meta,
-            modifier = Modifier.padding(horizontal = Space.md, vertical = Space.xs + 1.dp),
-        )
     }
 }
 
@@ -527,7 +604,9 @@ private fun EmptyState(pollIntervalSeconds: Long, onAdd: () -> Unit) {
     ) {
         Surface(color = MaterialTheme.colorScheme.surfaceVariant, shape = CircleShape) {
             Box(Modifier.size(44.dp), contentAlignment = Alignment.Center) {
-                SvgIcon(AppSvg.PLUS, MaterialTheme.colorScheme.onSurfaceVariant, Modifier.size(IconSize.lg))
+                // 20 dp -Medidas.dc.html §06 "vacío"-: no es un paso de IconSize (14/16/18), es
+                // la cota propia de este icono, el único fuera de la lista de la bandeja.
+                SvgIcon(AppSvg.PLUS, MaterialTheme.colorScheme.onSurfaceVariant, Modifier.size(20.dp))
             }
         }
         Spacer(Modifier.height(Space.md))
@@ -542,19 +621,13 @@ private fun EmptyState(pollIntervalSeconds: Long, onAdd: () -> Unit) {
             modifier = Modifier.width(320.dp),
         )
         Spacer(Modifier.height(Space.md))
-        Surface(
-            color = MaterialTheme.colorScheme.primaryContainer,
-            shape = RoundedCornerShape(Radius.pill),
+        Pill(
+            text = "Agregar imagen",
+            containerColor = MaterialTheme.colorScheme.primaryContainer,
+            contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
             onClick = onAdd,
-        ) {
-            Text(
-                "Agregar imagen",
-                color = MaterialTheme.colorScheme.onPrimaryContainer,
-                fontWeight = FontWeight.SemiBold,
-                fontSize = TypeScale.meta,
-                modifier = Modifier.padding(horizontal = Space.lg, vertical = Space.sm),
-            )
-        }
+            contentPadding = PaddingValues(horizontal = Space.lg, vertical = Space.sm),
+        )
     }
 }
 
@@ -562,11 +635,13 @@ private fun EmptyState(pollIntervalSeconds: Long, onAdd: () -> Unit) {
 private fun Footer(state: ImagesUiState, mutedAll: Boolean) {
     val dark = LocalIsDark.current
     val footState = when {
+        state.verifying -> "Comprobando"
         state.allFailing -> "Sin conexión"
         state.polling -> "Activo"
         else -> "Detenido"
     }
     val footColor = when {
+        state.verifying -> MaterialTheme.colorScheme.primary
         state.allFailing -> statusColors(ImageStatus.ERROR, dark).foreground
         state.polling -> MaterialTheme.colorScheme.primary
         else -> MaterialTheme.colorScheme.onSurfaceVariant
@@ -580,7 +655,7 @@ private fun Footer(state: ImagesUiState, mutedAll: Boolean) {
             .padding(horizontal = Space.xl, vertical = Space.sm),
     ) {
         Row(
-            Modifier.width(FOOT_STATE_WIDTH),
+            Modifier.width(Layout.footState),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(Space.xs),
         ) {
@@ -593,10 +668,11 @@ private fun Footer(state: ImagesUiState, mutedAll: Boolean) {
             color = mutedText(dark),
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.width(FOOT_NOTE_WIDTH),
+            style = TabularNums,
+            modifier = Modifier.width(Layout.footNote),
         )
         Spacer(Modifier.weight(1f))
-        Box(Modifier.width(FOOT_MUTED_WIDTH), contentAlignment = Alignment.CenterEnd) {
+        Box(Modifier.width(Layout.footMuted), contentAlignment = Alignment.CenterEnd) {
             if (mutedAll) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
@@ -617,7 +693,8 @@ private fun Footer(state: ImagesUiState, mutedAll: Boolean) {
             fontSize = TypeScale.caption,
             color = mutedText(dark),
             textAlign = TextAlign.End,
-            modifier = Modifier.width(FOOT_STATE_WIDTH),
+            style = TabularNums,
+            modifier = Modifier.width(Layout.footState),
         )
     }
 }

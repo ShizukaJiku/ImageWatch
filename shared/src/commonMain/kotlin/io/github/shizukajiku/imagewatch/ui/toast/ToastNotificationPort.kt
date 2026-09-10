@@ -43,4 +43,23 @@ class ToastNotificationPort(
         }
         toasts.show(relevantes)
     }
+
+    override fun notifyFailures(failures: List<ImageState>) {
+        if (config().mutedAll) {
+            return
+        }
+        // Una imagen silenciada no recibe ningún aviso en pantalla, ni de novedad ni de fallo:
+        // «Silenciar avisos» silencia todos los suyos. Se filtra igual que en [notifyUpdates].
+        val silenciadas = silencedImages.findAll()
+        val relevantes = failures.filterNot { it.name in silenciadas }
+        if (relevantes.isEmpty()) {
+            return
+        }
+        if (!config().toastsEnabled) {
+            return
+        }
+        // Sin sonido: el pitido de "todo falla" ya lo emite ImagesViewModel.onSnapshot en la
+        // transicion. Añadir uno aqui duplicaria el aviso sonoro por cada imagen que cae.
+        toasts.showFailures(relevantes)
+    }
 }

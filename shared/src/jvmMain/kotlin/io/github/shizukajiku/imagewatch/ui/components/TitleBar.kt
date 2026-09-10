@@ -1,8 +1,12 @@
 package io.github.shizukajiku.imagewatch.ui.components
 
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -18,6 +22,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.WindowScope
 import io.github.shizukajiku.imagewatch.ui.theme.IconSize
+import io.github.shizukajiku.imagewatch.ui.theme.Layout
 import io.github.shizukajiku.imagewatch.ui.theme.TypeScale
 
 // Ancho de la zona de clic del boton de cerrar: no es un paso de la escala, es el tamaño minimo
@@ -25,8 +30,8 @@ import io.github.shizukajiku.imagewatch.ui.theme.TypeScale
 private val CLOSE_HIT_WIDTH = 46.dp
 
 /**
- * Barra de título propia. La ventana va sin decoración del sistema y con un único botón, cerrar,
- * que la esconde en la bandeja.
+ * Barra de título propia. La ventana va sin decoración del sistema y con un único botón: cerrar
+ * (a la bandeja).
  *
  * No hay minimizar ni maximizar a propósito. Una aplicación residente que se minimiza acaba
  * duplicando su sitio —en la barra de tareas y en la bandeja— y deja a Windows decidiendo cuándo
@@ -38,29 +43,37 @@ private val CLOSE_HIT_WIDTH = 46.dp
 fun WindowScope.TitleBar(title: String, onClose: () -> Unit) {
     // La barra entera arrastra la ventana, que es lo que el usuario espera de una barra de título.
     WindowDraggableArea {
-        Surface(color = MaterialTheme.colorScheme.surface, modifier = Modifier.fillMaxWidth()) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                // El start = 14.dp no esta en la escala de Space (12 o 16): es el margen que ya
-                // tenia la barra frente al borde de la ventana.
-                modifier = Modifier.fillMaxWidth().padding(start = 14.dp),
+        Column {
+            Surface(
+                color = MaterialTheme.colorScheme.surface,
+                modifier = Modifier.fillMaxWidth().height(Layout.titleBarHeight),
             ) {
-                SvgIcon(AppSvg.LOGO, MaterialTheme.colorScheme.primary, Modifier.size(IconSize.md))
-                Text(
-                    "  $title",
-                    fontSize = TypeScale.meta,
-                    fontWeight = FontWeight.Medium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.weight(1f),
-                )
-                IconButton(onClose, modifier = Modifier.width(CLOSE_HIT_WIDTH)) {
-                    SvgIcon(
-                        AppSvg.CLOSE,
-                        MaterialTheme.colorScheme.onSurfaceVariant,
-                        Modifier.size(IconSize.sm),
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    // El start = 14.dp no esta en la escala de Space (12 o 16): es el margen que
+                    // ya tenia la barra frente al borde de la ventana.
+                    modifier = Modifier.fillMaxWidth().padding(start = 14.dp),
+                ) {
+                    SvgIcon(AppSvg.LOGO, MaterialTheme.colorScheme.primary, Modifier.size(IconSize.md))
+                    Text(
+                        "  $title",
+                        fontSize = TypeScale.meta,
+                        fontWeight = FontWeight.Medium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.weight(1f),
                     )
+                    IconButton(onClose, modifier = Modifier.width(CLOSE_HIT_WIDTH)) {
+                        SvgIcon(
+                            AppSvg.CLOSE,
+                            MaterialTheme.colorScheme.onSurfaceVariant,
+                            Modifier.size(IconSize.sm),
+                        )
+                    }
                 }
             }
+            Box(
+                Modifier.fillMaxWidth().height(1.dp).background(MaterialTheme.colorScheme.surfaceVariant),
+            )
         }
     }
 }

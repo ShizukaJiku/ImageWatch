@@ -18,10 +18,9 @@ captures
 **/xcshareddata/WorkspaceSettings.xcsettings
 node_modules/
 
-### Secretos locales ###
-# El hook de pre-commit lee .denylist.local en cada commit. Si estuviera versionado
-# filtraria justo lo que pretende bloquear.
-*.local
+### Notas de desarrollo (no se publican) ###
+docs/
+.superpowers/
 
 ### VS Code ###
 .vscode/

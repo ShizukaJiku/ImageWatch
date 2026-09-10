@@ -30,6 +30,12 @@ val DarkColors =
         onPrimaryContainer = Color(0xFFD9E0FF),
         errorContainer = Color(0xFF4A1D20),
         onErrorContainer = Color(0xFFFFB4B4),
+        // «Recién movida»: el resaltado de 4 s de una fila que acaba de entrar en «Al día»
+        // (Blueprint state colour «Contenedor de acento»). Alias explícito de primaryContainer:
+        // dicen lo mismo -«mira esto»- y `bumpColor()` lo lee sin conocer `ImageStatus`. Si algún
+        // día se separan, este deja de ser alias y toma color propio.
+        tertiaryContainer = Color(0xFF2B3557),
+        onTertiaryContainer = Color(0xFFD9E0FF),
     )
 
 val LightColors =
@@ -46,6 +52,8 @@ val LightColors =
         onPrimaryContainer = Color(0xFF1B2A5C),
         errorContainer = Color(0xFFFFE0E0),
         onErrorContainer = Color(0xFF7A1F22),
+        tertiaryContainer = Color(0xFFDDE3FF),
+        onTertiaryContainer = Color(0xFF1B2A5C),
     )
 
 /** Colores y texto de la pildora de estado. */
@@ -59,9 +67,9 @@ data class StatusColors(val background: Color, val foreground: Color, val label:
 fun statusColors(status: ImageStatus, dark: Boolean): StatusColors = when (status) {
     ImageStatus.PENDING -> {
         if (dark) {
-            StatusColors(Color(0xFF3A1414), Color(0xFFFF8F8F), "Nueva versión")
+            StatusColors(Color(0xFF3A1414), Color(0xFFFF8F8F), "Versión nueva")
         } else {
-            StatusColors(Color(0xFFFFE3E3), Color(0xFFC92A2A), "Nueva versión")
+            StatusColors(Color(0xFFFFE3E3), Color(0xFFC92A2A), "Versión nueva")
         }
     }
 
@@ -118,3 +126,11 @@ fun ghostBackground(dark: Boolean): Color = if (dark) Color(0xFF202023) else Col
  * texto secundario -origen de la fila, subtítulo-, y ese uso pesa mas que este.
  */
 fun mutedText(dark: Boolean): Color = if (dark) Color(0xFF5C5C66) else Color(0xFF9A9AA2)
+
+/**
+ * Borde y divisor fino -`--hair` en el diseño-, distinto de `surfaceVariant` -`--surfv`, fondo de
+ * píldora- en tema claro (en oscuro los dos valores coinciden, así que ahí no hay cambio visible).
+ * Antes de este token, cada borde/divisor usaba `surfaceVariant` porque era el único disponible,
+ * y en tema claro salía `#ECECF0` en vez de `#E4E4EA`.
+ */
+fun hairline(dark: Boolean): Color = if (dark) Color(0xFF2A2A2E) else Color(0xFFE4E4EA)

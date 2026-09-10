@@ -32,6 +32,16 @@ private fun pending(name: String) = ImageState(
     Instant.fromEpochSeconds(0),
 )
 
+private fun failing(name: String) = ImageState(
+    name,
+    null,
+    null,
+    "registry.local/$name",
+    ImageStatus.ERROR,
+    "HTTP 503",
+    Instant.fromEpochSeconds(0),
+)
+
 private fun config(toastsEnabled: Boolean, mutedAll: Boolean = false) = AppConfig(
     "images.json",
     "https://origen.ejemplo/api",
@@ -144,5 +154,73 @@ class ToastNotificationPortTest {
 
         assertTrue(reproducidos.isEmpty())
         assertTrue(toasts.toasts.value.isEmpty())
+    }
+
+    @Test
+    fun `notifyFailures respeta el silencio general y no suena`() {
+        val reproducidos = mutableListOf<Sound>()
+        val sounds = Sounds(
+            enabled = { true },
+            volume = { 1.0 },
+            windowFocused = { false },
+            onPlay = { reproducidos.add(it) },
+        )
+        val toasts = estadoSinReloj()
+        val port = ToastNotificationPort(toasts, sounds, FakeSilencedImageStore()) {
+            config(toastsEnabled = true, mutedAll = true)
+        }
+
+        port.notifyFailures(listOf(failing("alpha")))
+
+        assertTrue(reproducidos.isEmpty())
+        assertTrue(toasts.toasts.value.isEmpty())
+    }
+
+    @Test
+    fun `notifyFailures con toasts desactivados no muestra nada y no suena`() {
+        val reproducidos = mutableListOf<Sound>()
+        val sounds = Sounds(
+            enabled = { true },
+            volume = { 1.0 },
+            windowFocused = { false },
+            onPlay = { reproducidos.add(it) },
+        )
+        val toasts = estadoSinReloj()
+        val port = ToastNotificationPort(toasts, sounds, FakeSilencedImageStore()) {
+            config(toastsEnabled = false)
+        }
+
+        port.notifyFailures(listOf(failing("alpha")))
+
+        assertTrue(reproducidos.isEmpty(), "El toast de error no añade sonido propio")
+        assertTrue(toasts.toasts.value.isEmpty())
+    }
+
+    @Test
+    fun `notifyFailures no muestra el error de una imagen silenciada, pero si el de las demas`() {
+        val sounds = Sounds(enabled = { false }, volume = { 1.0 }, windowFocused = { false })
+        val toasts = estadoSinReloj()
+        val port = ToastNotificationPort(toasts, sounds, FakeSilencedImageStore(setOf("alpha"))) {
+            config(toastsEnabled = true)
+        }
+
+        port.notifyFailures(listOf(failing("alpha"), failing("beta")))
+
+        assertEquals(listOf("beta"), toasts.toasts.value.map { it.imageName })
+    }
+
+    @Test
+    fun `notifyFailures con toasts activados muestra el aviso de error sin sonido`() {
+        val sounds = Sounds(enabled = { false }, volume = { 1.0 }, windowFocused = { false })
+        val toasts = estadoSinReloj()
+        val port = ToastNotificationPort(toasts, sounds, FakeSilencedImageStore()) {
+            config(toastsEnabled = true)
+        }
+
+        port.notifyFailures(listOf(failing("alpha")))
+
+        val toast = toasts.toasts.value.single()
+        assertEquals(ToastKind.ERROR, toast.kind)
+        assertEquals("alpha", toast.imageName)
     }
 }

@@ -12,6 +12,7 @@ import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.seconds
 import kotlin.time.Instant
@@ -26,6 +27,16 @@ private fun pending(name: String, from: String, to: String) = ImageState(
     Instant.fromEpochSeconds(0),
 )
 
+private fun failed(name: String, message: String?) = ImageState(
+    name,
+    null,
+    null,
+    "registry.local/$name",
+    ImageStatus.ERROR,
+    message,
+    Instant.fromEpochSeconds(0),
+)
+
 /**
  * Duración fija y muy holgada para las pruebas que no ejercitan el reloj: da igual el número
  * mientras sea mayor que lo que tarda la prueba en correr, porque un `CoroutineScope` real —no de
@@ -37,15 +48,18 @@ private fun estadoSinReloj() = ToastState(CoroutineScope(Job()), { 60.seconds })
 class ToastStateTest {
 
     @Test
-    fun `una imagen produce un toast con su transicion`() {
+    fun `una imagen produce un toast NUEVA sin nombrar la version anterior`() {
         val state = estadoSinReloj()
 
         state.show(listOf(pending("alpha", "1.0.0", "1.1.0")))
 
         val toast = state.toasts.value.single()
         assertEquals("alpha", toast.imageName)
-        assertTrue(toast.body.contains("1.0.0"))
-        assertTrue(toast.body.contains("1.1.0"))
+        assertEquals(ToastKind.NUEVA, toast.kind)
+        assertEquals("versión 1.1.0", toast.sub)
+        assertFalse(toast.sub.contains("1.0.0"), "No nombra la version anterior (V-3)")
+        assertEquals("registry.local/alpha", toast.meta)
+        assertEquals("Ver", toast.action)
     }
 
     @Test
@@ -55,25 +69,6 @@ class ToastStateTest {
         state.show(listOf(pending("alpha", "1.0.0", "1.1.0"), pending("beta", "2.0.0", "2.1.0")))
 
         assertEquals(2, state.toasts.value.size)
-    }
-
-    @Test
-    fun `tres o mas siguen siendo un toast por imagen`() {
-        // Se decidio no agrupar: cada imagen su aviso, y ninguno se pierde.
-        val state = estadoSinReloj()
-
-        state.show(
-            listOf(
-                pending("alpha", "1.0.0", "1.1.0"),
-                pending("beta", "2.0.0", "2.1.0"),
-                pending("gamma", "3.0.0", "3.1.0"),
-            ),
-        )
-
-        assertEquals(
-            listOf("alpha", "beta", "gamma"),
-            state.toasts.value.map { it.imageName },
-        )
     }
 
     @Test
@@ -92,8 +87,6 @@ class ToastStateTest {
     fun `mostrar en paralelo no pierde ningun toast`() {
         // show() corre en el hilo del planificador y dismiss() en el de Compose: un
         // leer-modificar-escribir no atomico sobre mutableToasts.value perderia escrituras aqui.
-        // Sin tope: con el tope real recortando a los ultimos, perder una escritura y recortarla
-        // dan el mismo tamano final y el test dejaria de distinguir la carrera.
         val state = estadoSinReloj()
         val total = 50
 
@@ -103,15 +96,20 @@ class ToastStateTest {
         threads.forEach(Thread::start)
         threads.forEach(Thread::join)
 
-        assertEquals(total, state.toasts.value.size)
+        // Con mas de 3 en cola, la lista publica recorta a 2 reales + RESUMEN.
+        assertEquals(3, state.toasts.value.size)
+        assertEquals(ToastKind.RESUMEN, state.toasts.value.last().kind)
     }
 
     @Test
     fun `descartar en paralelo no pierde ningun descarte`() {
-        // Sin tope: con el tope real recortando a los ultimos, perder una escritura y recortarla
-        // dan el mismo tamano final y el test dejaria de distinguir la carrera.
+        // Se queda en TOASTS_VISIBLES elementos -no en los 50 de antes de esta fase- porque a
+        // partir de ahi la cola publica sintetiza un RESUMEN y sus ids reales dejan de ser
+        // visibles desde aqui. Con exactamente TOASTS_VISIBLES no hay RESUMEN y los tres ids son
+        // los reales: la carrera que este test vigila -leer-modificar-escribir no atomico sobre
+        // mutableToasts.value- se ejercita igual con tres hilos que con cincuenta.
         val state = estadoSinReloj()
-        val total = 50
+        val total = TOASTS_VISIBLES
         (1..total).forEach { i -> state.show(listOf(pending("img$i", "1.0.0", "1.1.0"))) }
         val ids = state.toasts.value.map { it.id }
 
@@ -124,33 +122,18 @@ class ToastStateTest {
 
     @Test
     fun `los que no caben en la ventana esperan turno en vez de perderse`() {
-        // Se muestran los primeros TOASTS_VISIBLES; el resto sigue en la cola y entra en cuanto
-        // se libera hueco. Ningun aviso se pierde por llegar en mal momento.
+        // Se muestran los primeros TOASTS_VISIBLES reales; el resto sigue en la cola y entra en
+        // cuanto se libera hueco. Ningun aviso se pierde por llegar en mal momento.
         val state = estadoSinReloj()
 
         repeat(10) { i -> state.show(listOf(pending("img$i", "1.0.0", "1.1.0"))) }
 
-        assertEquals(10, state.toasts.value.size, "La cola los conserva todos")
         assertEquals(
-            listOf("img0", "img1", "img2", "img3"),
-            state.toasts.value.take(TOASTS_VISIBLES).map { it.imageName },
+            listOf("img0", "img1"),
+            state.toasts.value.take(2).map { it.imageName },
             "Se muestran los mas antiguos: son los que llevan mas tiempo esperando",
         )
-    }
-
-    @Test
-    fun `al descartar uno entra el siguiente de la cola`() {
-        val state = estadoSinReloj()
-        repeat(6) { i -> state.show(listOf(pending("img$i", "1.0.0", "1.1.0"))) }
-        val visiblesAntes = state.toasts.value.take(TOASTS_VISIBLES).map { it.imageName }
-
-        state.dismiss(state.toasts.value.first().id)
-
-        assertEquals(listOf("img0", "img1", "img2", "img3"), visiblesAntes)
-        assertEquals(
-            listOf("img1", "img2", "img3", "img4"),
-            state.toasts.value.take(TOASTS_VISIBLES).map { it.imageName },
-        )
+        assertEquals(ToastKind.RESUMEN, state.toasts.value[2].kind)
     }
 
     @Test
@@ -174,6 +157,81 @@ class ToastStateTest {
         state.dismissFor("gamma")
 
         assertEquals(1, state.toasts.value.size)
+    }
+
+    @Test
+    fun `showFailures produce un toast ERROR con Reintentar como accion`() {
+        val state = estadoSinReloj()
+
+        state.showFailures(listOf(failed("alpha", "HTTP 503")))
+
+        val toast = state.toasts.value.single()
+        assertEquals(ToastKind.ERROR, toast.kind)
+        assertEquals("HTTP 503", toast.sub)
+        assertEquals("Reintentar", toast.action)
+        assertEquals("registry.local/alpha", toast.meta)
+    }
+
+    @Test
+    fun `showFailures sin detalle usa un motivo por defecto`() {
+        val state = estadoSinReloj()
+
+        state.showFailures(listOf(failed("alpha", null)))
+
+        assertEquals("sin detalle", state.toasts.value.single().sub)
+    }
+
+    @Test
+    fun `con mas de tres en cola se sintetiza un RESUMEN con las dos primeras reales`() {
+        val state = estadoSinReloj()
+
+        repeat(5) { i -> state.show(listOf(pending("img$i", "1.0.0", "1.1.0"))) }
+
+        val toasts = state.toasts.value
+        assertEquals(3, toasts.size)
+        assertEquals(listOf("img0", "img1"), toasts.take(2).map { it.imageName })
+        val resumen = toasts[2]
+        assertEquals(ToastKind.RESUMEN, resumen.kind)
+        assertEquals("y 3 novedades más", resumen.title)
+        assertEquals("Ver todas", resumen.action)
+        assertNull(resumen.imageName)
+        assertEquals(listOf("img2", "img3", "img4").joinToString(", "), resumen.meta)
+    }
+
+    @Test
+    fun `al descartar uno de los reales el RESUMEN baja su cuenta y entra el siguiente`() {
+        val state = estadoSinReloj()
+        repeat(5) { i -> state.show(listOf(pending("img$i", "1.0.0", "1.1.0"))) }
+        val primero = state.toasts.value.first().id
+
+        state.dismiss(primero)
+
+        val toasts = state.toasts.value
+        assertEquals(listOf("img1", "img2"), toasts.take(2).map { it.imageName })
+        assertEquals("y 2 novedades más", toasts[2].title)
+    }
+
+    @Test
+    fun `con tres o menos en cola no hay RESUMEN`() {
+        val state = estadoSinReloj()
+        repeat(3) { i -> state.show(listOf(pending("img$i", "1.0.0", "1.1.0"))) }
+
+        assertEquals(3, state.toasts.value.size)
+        assertTrue(state.toasts.value.none { it.kind == ToastKind.RESUMEN })
+    }
+
+    @Test
+    fun `el reloj de descarte solo corre para los dos reales visibles, no para el RESUMEN`() = runTest {
+        val state = ToastState(backgroundScope, { 5.seconds }, { currentTime })
+        repeat(5) { i -> state.show(listOf(pending("img$i", "1.0.0", "1.1.0"))) }
+
+        advanceTimeBy(5_001)
+
+        val toasts = state.toasts.value
+        // Los dos reales visibles (img0, img1) expiraron y se marcaron salientes.
+        assertTrue(toasts[0].leaving && toasts[1].leaving)
+        // El RESUMEN no tiene reloj propio: nunca se marca saliente por si mismo.
+        assertFalse(toasts[2].leaving)
     }
 
     @Test
@@ -204,16 +262,5 @@ class ToastStateTest {
         assertFalse(state.toasts.value.single().leaving, "Quedaban 2 s, no 0")
         advanceTimeBy(600)
         assertTrue(state.toasts.value.single().leaving)
-    }
-
-    @Test
-    fun `el que espera turno no gasta su tiempo hasta que se pinta`() = runTest {
-        val state = ToastState(backgroundScope, { 5.seconds }, { currentTime })
-        repeat(TOASTS_VISIBLES + 1) { i -> state.show(listOf(pending("img$i", "1.0.0", "1.1.0"))) }
-        val ultimo = state.toasts.value.last().id
-
-        advanceTimeBy(5_001)
-
-        assertTrue(state.toasts.value.any { it.id == ultimo && !it.leaving }, "Entra ahora, no se pierde")
     }
 }

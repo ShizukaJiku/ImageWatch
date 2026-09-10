@@ -1,6 +1,6 @@
 package io.github.shizukajiku.imagewatch.ui.images
 
-import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -11,15 +11,15 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.TooltipArea
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -27,7 +27,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -41,6 +40,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
@@ -51,29 +51,23 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import io.github.shizukajiku.imagewatch.domain.ImageStatus
 import io.github.shizukajiku.imagewatch.ui.components.AppSvg
+import io.github.shizukajiku.imagewatch.ui.components.IwIconButton
+import io.github.shizukajiku.imagewatch.ui.components.Pill
 import io.github.shizukajiku.imagewatch.ui.components.SvgIcon
-import io.github.shizukajiku.imagewatch.ui.theme.Dwell
 import io.github.shizukajiku.imagewatch.ui.theme.IconSize
+import io.github.shizukajiku.imagewatch.ui.theme.Layout
 import io.github.shizukajiku.imagewatch.ui.theme.LocalIsDark
 import io.github.shizukajiku.imagewatch.ui.theme.Motion
 import io.github.shizukajiku.imagewatch.ui.theme.Radius
 import io.github.shizukajiku.imagewatch.ui.theme.Space
+import io.github.shizukajiku.imagewatch.ui.theme.TabularNums
 import io.github.shizukajiku.imagewatch.ui.theme.TypeScale
-import io.github.shizukajiku.imagewatch.ui.theme.ghostBackground
+import io.github.shizukajiku.imagewatch.ui.theme.focusRing
+import io.github.shizukajiku.imagewatch.ui.theme.hairline
 import io.github.shizukajiku.imagewatch.ui.theme.mutedText
 import io.github.shizukajiku.imagewatch.ui.theme.statusColors
-
-// Los cinco anchos reservados de la fila -ninguno es un paso de la escala de Space, son los
-// huecos que el diseño fija para que cambiar de estado nunca desplace a un vecino-.
-private val AGE_WIDTH = 104.dp
-private val SKIP_WIDTH = 44.dp
-private val PILL_WIDTH = 104.dp
-private val CHIP_WIDTH = 88.dp
-private val KEBAB_WIDTH = 30.dp
-
-// Relleno de la tarjeta de fila: no esta en la escala de Space, es el que ya trae el diseño.
-private val CARD_PADDING_H = 14.dp
-private val CARD_PADDING_V = 11.dp
+import kotlinx.coroutines.delay
+import kotlin.time.Clock
 
 /** Techo del latido de una fila UNKNOWN mientras se comprueba: cuanto se apaga en el punto mas bajo. */
 private const val PULSE_MIN_ALPHA = 0.45f
@@ -81,30 +75,52 @@ private const val PULSE_MIN_ALPHA = 0.45f
 /** Opacidad de una fila con una comprobacion individual en vuelo. */
 private const val CHECKING_ALPHA = 0.45f
 
+/** Cuanto se enseña «Copiado» en la pildora tras copiar la referencia. */
+private const val COPIED_MILLIS = 2000L
+
 /**
  * La tarjeta compartida por las tres secciones: mismo borde, mismo relleno, misma rejilla de
  * columnas. Lo que cambia entre «Versión nueva», «No se pudo verificar» y «Al día» es el
  * contenido de cada celda, no la forma de la tarjeta.
+ *
+ * Un clic en la banda superior -en cualquier punto que no sea un control- despliega [detail] en
+ * su sitio, animando el alto con la curva de énfasis (Blueprint «Fila (clic)»).
  */
 @Composable
 private fun RowCard(
     background: Color,
     borderColor: Color,
     modifier: Modifier = Modifier,
+    expanded: Boolean = false,
+    onToggleExpand: (() -> Unit)? = null,
+    onFocusChanged: ((Boolean) -> Unit)? = null,
+    detail: (@Composable () -> Unit)? = null,
     content: @Composable RowScope.() -> Unit,
 ) {
     Surface(
         color = background,
         border = BorderStroke(1.dp, borderColor),
         shape = RoundedCornerShape(Radius.md),
-        modifier = modifier.fillMaxWidth(),
+        modifier = modifier
+            .fillMaxWidth()
+            .animateContentSize(tween(Motion.EMPHASIS, easing = Motion.emphasisEasing)),
     ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(Space.md),
-            modifier = Modifier.padding(horizontal = CARD_PADDING_H, vertical = CARD_PADDING_V),
-            content = content,
-        )
+        Column {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(Space.md),
+                modifier = Modifier
+                    .onFocusChanged { onFocusChanged?.invoke(it.isFocused) }
+                    .then(if (onToggleExpand != null) Modifier.clickable(onClick = onToggleExpand) else Modifier)
+                    .focusRing(Radius.md)
+                    .padding(horizontal = Layout.rowPadH, vertical = Layout.rowPadV),
+                content = content,
+            )
+            if (expanded && detail != null) {
+                HorizontalDivider(color = hairline(LocalIsDark.current))
+                detail()
+            }
+        }
     }
 }
 
@@ -131,13 +147,14 @@ private fun RowScope.NameCell(name: String, origin: String, nameColor: Color) {
 
 @Composable
 private fun RowScope.AgeCell(age: String, caption: String, color: Color) {
-    Column(Modifier.width(AGE_WIDTH), horizontalAlignment = Alignment.End) {
+    Column(Modifier.width(Layout.rowAge), horizontalAlignment = Alignment.End) {
         Text(
             age,
             fontSize = TypeScale.meta,
             color = color,
             textAlign = TextAlign.End,
             maxLines = 1,
+            style = TabularNums,
         )
         Text(
             caption,
@@ -151,78 +168,150 @@ private fun RowScope.AgeCell(age: String, caption: String, color: Color) {
 /** El contador de saltos («+2») a la izquierda de la píldora: hueco propio aunque este vacío. */
 @Composable
 private fun RowScope.SkipAndPillCell(skip: String, pillText: String, pillBackground: Color, pillForeground: Color) {
-    Row(Modifier.width(SKIP_WIDTH + PILL_WIDTH), horizontalArrangement = Arrangement.End) {
+    Row(Modifier.width(Layout.rowSkip + Layout.rowPill), horizontalArrangement = Arrangement.End) {
         Text(
             skip,
             fontSize = TypeScale.caption,
             color = mutedText(LocalIsDark.current),
             textAlign = TextAlign.End,
-            modifier = Modifier.width(SKIP_WIDTH).padding(end = Space.sm),
+            style = TabularNums,
+            modifier = Modifier.width(Layout.rowSkip).padding(end = Space.sm),
         )
-        Surface(
-            color = pillBackground,
-            shape = RoundedCornerShape(Radius.pill),
-            modifier = Modifier.width(PILL_WIDTH),
-        ) {
-            Text(
-                pillText,
-                color = pillForeground,
-                fontFamily = FontFamily.Monospace,
-                fontWeight = FontWeight.Bold,
-                fontSize = TypeScale.meta,
-                textAlign = TextAlign.Center,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
-            )
-        }
+        Pill(
+            text = pillText,
+            containerColor = pillBackground,
+            contentColor = pillForeground,
+            width = Layout.rowPill,
+            contentPadding = PaddingValues(vertical = 6.dp),
+            fontFamily = FontFamily.Monospace,
+            fontWeight = FontWeight.Bold,
+            fontSize = TypeScale.meta,
+        )
     }
 }
 
 @Composable
 private fun RowScope.ActionsCell(chip: @Composable () -> Unit, menu: @Composable () -> Unit) {
+    // Columna de 128 dp, hueco de 6 dp entre el chip y el kebab -Medidas.dc.html §07-: ninguno
+    // de los dos es un paso de Space (4 u 8), es la cota propia de esta columna.
     Row(
-        Modifier.width(CHIP_WIDTH + Space.xs + KEBAB_WIDTH),
-        horizontalArrangement = Arrangement.spacedBy(Space.xs, Alignment.End),
+        Modifier.width(128.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.End),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Box(Modifier.width(CHIP_WIDTH), contentAlignment = Alignment.Center) { chip() }
+        Box(Modifier.width(Layout.rowChip), contentAlignment = Alignment.Center) { chip() }
         menu()
     }
 }
 
+/**
+ * El detalle que se despliega bajo la fila (Blueprint D2): los cuatro datos que la app tiene de
+ * verdad -nombre, origen, última versión, cuándo se detectó- y las cuatro acciones que son la
+ * razón de ser de la fila abierta. «Copiar referencia» copia solo el origen y lo dice cambiando
+ * su etiqueta a «Copiado» durante dos segundos, sin aviso.
+ */
 @Composable
-private fun ActionChip(text: String, background: Color, foreground: Color, onClick: () -> Unit) {
-    Surface(
-        color = background,
-        shape = RoundedCornerShape(Radius.pill),
-        modifier = Modifier.fillMaxWidth(),
-        onClick = onClick,
-    ) {
+private fun RowDetail(row: ImageRowState, onRefresh: () -> Unit, onToggleSilence: () -> Unit, onDelete: () -> Unit) {
+    val clipboard = LocalClipboardManager.current
+    var copiedAt by remember { mutableStateOf(0L) }
+    val copied = copiedAt > 0L
+    LaunchedEffect(copiedAt) {
+        if (copiedAt > 0L) {
+            delay(COPIED_MILLIS)
+            copiedAt = 0L
+        }
+    }
+    Column(Modifier.padding(Layout.rowPadH)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(Space.xl)) {
+            DetailField("Nombre", row.name)
+            DetailField("Origen", row.registry)
+            DetailField("Última versión", if (row.remote != "—") row.remote else row.local)
+            DetailField("Detectada", row.detail)
+        }
+        Row(
+            Modifier.fillMaxWidth().padding(top = Space.md),
+            horizontalArrangement = Arrangement.spacedBy(Space.sm),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Pill(
+                text = "Comprobar ahora",
+                containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                onClick = onRefresh,
+                contentPadding = PaddingValues(horizontal = Space.md, vertical = Space.xs + 2.dp),
+            )
+            Pill(
+                text = if (copied) "Copiado" else "Copiar referencia",
+                containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                onClick = {
+                    clipboard.setText(AnnotatedString(row.registry))
+                    copiedAt = Clock.System.now().toEpochMilliseconds()
+                },
+                contentPadding = PaddingValues(horizontal = Space.md, vertical = Space.xs + 2.dp),
+            )
+            Pill(
+                text = if (row.muted) "Reactivar avisos" else "Silenciar avisos",
+                containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                onClick = onToggleSilence,
+                leadingIcon = if (row.muted) AppSvg.BELL else AppSvg.BELL_OFF,
+                contentPadding = PaddingValues(horizontal = Space.md, vertical = Space.xs + 2.dp),
+            )
+            Spacer(Modifier.weight(1f))
+            Surface(
+                color = MaterialTheme.colorScheme.errorContainer,
+                shape = RoundedCornerShape(Radius.pill),
+                onClick = onDelete,
+                modifier = Modifier.focusRing(Radius.pill),
+            ) {
+                Row(
+                    Modifier.padding(horizontal = Space.md, vertical = Space.xs + 2.dp),
+                    horizontalArrangement = Arrangement.spacedBy(Space.xs),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    SvgIcon(AppSvg.TRASH, MaterialTheme.colorScheme.onErrorContainer, Modifier.size(IconSize.sm))
+                    Text(
+                        "Quitar de la lista",
+                        color = MaterialTheme.colorScheme.onErrorContainer,
+                        fontSize = TypeScale.meta,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun RowScope.DetailField(label: String, value: String) {
+    Column(Modifier.weight(1f)) {
+        Text(label.uppercase(), fontSize = TypeScale.caption, color = mutedText(LocalIsDark.current))
         Text(
-            text,
-            color = foreground,
-            fontWeight = FontWeight.SemiBold,
+            value,
             fontSize = TypeScale.meta,
-            textAlign = TextAlign.Center,
+            color = MaterialTheme.colorScheme.onSurface,
+            style = TabularNums,
             maxLines = 1,
-            modifier = Modifier.padding(vertical = Space.sm - 1.dp),
+            overflow = TextOverflow.Ellipsis,
         )
     }
 }
 
 /**
- * Fila de «Versión nueva»: la píldora enseña la versión remota y el chip pide «Visto», que no
- * reconoce al momento -abre la ventana de Deshacer, ver [UndoRow]-.
+ * Fila de «Versión nueva»: la píldora enseña la versión remota y el chip pide «Visto», que
+ * reconoce al momento -sin ventana de deshacer (D1)-.
  */
 @Composable
 fun PendingRow(
     row: ImageRowState,
+    expanded: Boolean,
+    onToggleExpand: () -> Unit,
     onAcknowledge: () -> Unit,
     onRefresh: () -> Unit,
-    onEdit: () -> Unit,
     onToggleSilence: () -> Unit,
     onDelete: () -> Unit,
+    onFocusedChange: (Boolean) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val dark = LocalIsDark.current
@@ -235,24 +324,31 @@ fun PendingRow(
         background = MaterialTheme.colorScheme.surface,
         borderColor = palette.background,
         modifier = modifier.then(emphasisModifier(row)),
+        expanded = expanded,
+        onToggleExpand = onToggleExpand,
+        onFocusChanged = onFocusedChange,
+        detail = { RowDetail(row, onRefresh, onToggleSilence, onDelete) },
     ) {
         NameCell(row.name, row.registry, MaterialTheme.colorScheme.onSurface)
         AgeCell(row.age, "pendiente", palette.foreground)
         // El contador de versiones saltadas ("+2") queda vacío: el núcleo compara local contra
         // remota, no cuenta las publicaciones intermedias, así que no hay una cifra real que
-        // enseñar aquí todavía. El hueco de SKIP_WIDTH se reserva igual para que la píldora no
+        // enseñar aquí todavía. El hueco de Layout.rowSkip se reserva igual para que la píldora no
         // se mueva el día que exista.
         SkipAndPillCell("", row.remote, palette.background, palette.foreground)
         ActionsCell(
             chip = {
-                ActionChip(
-                    "Visto",
-                    MaterialTheme.colorScheme.primaryContainer,
-                    MaterialTheme.colorScheme.onPrimaryContainer,
-                    onAcknowledge,
+                Pill(
+                    text = "Visto",
+                    containerColor = MaterialTheme.colorScheme.primaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                    onClick = onAcknowledge,
+                    leadingIcon = AppSvg.CHECK,
+                    width = Layout.rowChip,
+                    contentPadding = PaddingValues(vertical = Space.sm - 1.dp),
                 )
             },
-            menu = { RowMenu(row, onAcknowledge, onRefresh, onEdit, onToggleSilence, onDelete) },
+            menu = { RowMenu(row, onAcknowledge, onRefresh, onToggleSilence, onDelete) },
         )
     }
 }
@@ -262,10 +358,12 @@ fun PendingRow(
 @Composable
 fun ErrorRow(
     row: ImageRowState,
+    expanded: Boolean,
+    onToggleExpand: () -> Unit,
     onRefresh: () -> Unit,
-    onEdit: () -> Unit,
     onToggleSilence: () -> Unit,
     onDelete: () -> Unit,
+    onFocusedChange: (Boolean) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val dark = LocalIsDark.current
@@ -279,20 +377,26 @@ fun ErrorRow(
             background = MaterialTheme.colorScheme.surface,
             borderColor = palette.background,
             modifier = modifier.then(emphasisModifier(row)),
+            expanded = expanded,
+            onToggleExpand = onToggleExpand,
+            onFocusChanged = onFocusedChange,
+            detail = { RowDetail(row, onRefresh, onToggleSilence, onDelete) },
         ) {
             NameCell(row.name, row.registry, palette.foreground)
             AgeCell(row.age, "falla", palette.foreground)
             SkipAndPillCell("", "Error", palette.background, palette.foreground)
             ActionsCell(
                 chip = {
-                    ActionChip(
-                        "Reintentar",
-                        MaterialTheme.colorScheme.surfaceVariant,
-                        MaterialTheme.colorScheme.onSurfaceVariant,
-                        onRefresh,
+                    Pill(
+                        text = "Reintentar",
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                        contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                        onClick = onRefresh,
+                        width = Layout.rowChip,
+                        contentPadding = PaddingValues(vertical = Space.sm - 1.dp),
                     )
                 },
-                menu = { RowMenu(row, onAcknowledge = null, onRefresh, onEdit, onToggleSilence, onDelete) },
+                menu = { RowMenu(row, onAcknowledge = null, onRefresh, onToggleSilence, onDelete) },
             )
         }
     }
@@ -322,11 +426,12 @@ fun OkRow(
     pillBackground: Color,
     pillForeground: Color,
     verifying: Boolean,
-    onAcknowledge: (() -> Unit)?,
+    expanded: Boolean,
+    onToggleExpand: () -> Unit,
     onRefresh: () -> Unit,
-    onEdit: () -> Unit,
     onToggleSilence: () -> Unit,
     onDelete: () -> Unit,
+    onFocusedChange: (Boolean) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     if (row.checking) {
@@ -337,8 +442,12 @@ fun OkRow(
     val alpha = if (pulsing) unverifiedPulseAlpha() else 1f
     RowCard(
         background = MaterialTheme.colorScheme.surface,
-        borderColor = MaterialTheme.colorScheme.surfaceVariant,
+        borderColor = hairline(LocalIsDark.current),
         modifier = modifier.alpha(alpha).then(emphasisModifier(row)),
+        expanded = expanded,
+        onToggleExpand = onToggleExpand,
+        onFocusChanged = onFocusedChange,
+        detail = { RowDetail(row, onRefresh, onToggleSilence, onDelete) },
     ) {
         NameCell(row.name, row.registry, MaterialTheme.colorScheme.onSurface)
         AgeCell(row.age.ifEmpty { "—" }, ageCaption, MaterialTheme.colorScheme.onSurfaceVariant)
@@ -355,7 +464,7 @@ fun OkRow(
                     }
                 }
             },
-            menu = { RowMenu(row, onAcknowledge, onRefresh, onEdit, onToggleSilence, onDelete) },
+            menu = { RowMenu(row, onAcknowledge = null, onRefresh, onToggleSilence, onDelete) },
         )
     }
 }
@@ -387,87 +496,24 @@ private fun CheckingRow(row: ImageRowState, modifier: Modifier = Modifier) {
         )
     RowCard(
         background = MaterialTheme.colorScheme.surface,
-        borderColor = MaterialTheme.colorScheme.surfaceVariant,
+        borderColor = hairline(LocalIsDark.current),
         modifier = modifier.alpha(CHECKING_ALPHA),
     ) {
         NameCell(row.name, row.registry, MaterialTheme.colorScheme.onSurface)
         Row(
             Modifier.width(
-                AGE_WIDTH + Space.md + SKIP_WIDTH + PILL_WIDTH + Space.md + CHIP_WIDTH + Space.xs + KEBAB_WIDTH,
+                Layout.rowAge + Space.md + Layout.rowSkip + Layout.rowPill + Space.md + 128.dp,
             ),
             horizontalArrangement = Arrangement.End,
             verticalAlignment = Alignment.CenterVertically,
         ) {
             SvgIcon(
-                AppSvg.REFRESH,
+                AppSvg.SPINNER,
                 MaterialTheme.colorScheme.onSurfaceVariant,
                 Modifier.size(IconSize.sm).rotate(rotation),
             )
             Spacer(Modifier.width(Space.sm))
             Text("comprobando", fontSize = TypeScale.meta, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-    }
-}
-
-/**
- * Línea de «Deshacer»: sustituye a la fila durante [Dwell.UNDO_MILLIS] tras pedir «Visto». La
- * barra anima el mismo tiempo que corre el temporizador real del view model -ambas leen
- * `Dwell.UNDO_MILLIS`-, así que no hay dos duraciones que mantener sincronizadas a mano.
- */
-@Composable
-fun UndoRow(name: String, onUndo: () -> Unit, modifier: Modifier = Modifier) {
-    val dark = LocalIsDark.current
-    val progress = remember(name) { Animatable(1f) }
-    LaunchedEffect(name) {
-        progress.animateTo(0f, tween(Dwell.UNDO_MILLIS.toInt(), easing = LinearEasing))
-    }
-    Surface(
-        color = ghostBackground(dark),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.surfaceVariant),
-        shape = RoundedCornerShape(Radius.md),
-        modifier = modifier.fillMaxWidth(),
-    ) {
-        Column {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(Space.md),
-                modifier = Modifier.padding(horizontal = CARD_PADDING_H).height(41.dp),
-            ) {
-                SvgIcon(AppSvg.CHECK, statusColors(ImageStatus.OK, dark).foreground, Modifier.size(IconSize.sm))
-                Text(
-                    "Marcada como vista",
-                    fontSize = TypeScale.meta,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Text(
-                    name,
-                    fontSize = TypeScale.meta,
-                    color = mutedText(dark),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Spacer(Modifier.weight(1f))
-                Surface(
-                    color = MaterialTheme.colorScheme.primaryContainer,
-                    shape = RoundedCornerShape(Radius.pill),
-                    onClick = onUndo,
-                ) {
-                    Text(
-                        "Deshacer",
-                        color = MaterialTheme.colorScheme.onPrimaryContainer,
-                        fontWeight = FontWeight.SemiBold,
-                        fontSize = TypeScale.meta,
-                        modifier = Modifier.padding(horizontal = Space.md, vertical = Space.xs + 1.dp),
-                    )
-                }
-            }
-            Box(Modifier.fillMaxWidth().height(3.dp).background(MaterialTheme.colorScheme.surfaceVariant)) {
-                Box(
-                    Modifier.fillMaxHeight()
-                        .fillMaxWidth(progress.value.coerceIn(0f, 1f))
-                        .background(MaterialTheme.colorScheme.primary),
-                )
-            }
         }
     }
 }
@@ -478,18 +524,14 @@ private fun RowMenu(
     row: ImageRowState,
     onAcknowledge: (() -> Unit)?,
     onRefresh: () -> Unit,
-    onEdit: () -> Unit,
     onToggleSilence: () -> Unit,
     onDelete: () -> Unit,
 ) {
     var expanded by remember { mutableStateOf(false) }
     val clipboard = LocalClipboardManager.current
-    val reference = "${row.registry}:${if (row.remote != "—") row.remote else row.local}"
 
     Box {
-        IconButton({ expanded = true }, modifier = Modifier.size(KEBAB_WIDTH)) {
-            SvgIcon(AppSvg.KEBAB, MaterialTheme.colorScheme.onSurfaceVariant, Modifier.size(IconSize.md))
-        }
+        IwIconButton(AppSvg.KEBAB, { expanded = true }, boxSize = Layout.rowKebab, iconSize = IconSize.md)
         DropdownMenu(expanded, { expanded = false }) {
             if (onAcknowledge != null) {
                 DropdownMenuItem(
@@ -520,17 +562,8 @@ private fun RowMenu(
                 },
                 onClick = {
                     expanded = false
-                    clipboard.setText(AnnotatedString(reference))
-                },
-            )
-            DropdownMenuItem(
-                text = { Text("Renombrar") },
-                leadingIcon = {
-                    SvgIcon(AppSvg.PENCIL, MaterialTheme.colorScheme.onSurfaceVariant, Modifier.size(IconSize.sm))
-                },
-                onClick = {
-                    expanded = false
-                    onEdit()
+                    // Blueprint: copia solo el origen, no `origen:versión`.
+                    clipboard.setText(AnnotatedString(row.registry))
                 },
             )
             DropdownMenuItem(

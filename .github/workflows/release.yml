@@ -1,19 +1,18 @@
 name: Release
 
-# Se dispara al empujar una etiqueta de versión (v1.2.3). El job de build
-# depende del de test: si algo falla, no se genera ni se publica ningún
-# instalador. El instalador se sube como asset del Release de GitHub, listo
-# para descargar y ejecutar sin pasar por el código fuente.
+# Al fusionar un PR a main (o un push directo a main). Lee `imagewatch.version` de
+# gradle.properties: si su Release `vX.Y.Z` todavía no existe, empaqueta el MSI y el
+# zip portable y publica el Release —creando el tag en el mismo paso—. Fusionar sin
+# subir la versión no genera nada.
 on:
   push:
-    tags:
-      - "v*.*.*"
+    branches: [main]
 
 permissions:
   contents: write
 
 concurrency:
-  group: release-${{ github.ref }}
+  group: release-main
   cancel-in-progress: false
 
 jobs:
@@ -40,58 +39,73 @@ jobs:
         run: ./gradlew :shared:jvmTest --no-daemon
 
   build:
-    name: Generar el instalador
+    name: Instalador y Release
     needs: test
-    # El empaquetado (jpackage + WiX) produce un MSI, así que el runner tiene
-    # que ser Windows: es el único formato que desktopApp/build.gradle.kts
-    # declara en nativeDistributions.targetFormats.
+    # jpackage + WiX solo producen MSI en Windows: es el runner obligado.
     runs-on: windows-latest
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      SIGN_PFX_BASE64: ${{ secrets.SIGN_PFX_BASE64 }}
+      SIGN_PFX_PASSWORD: ${{ secrets.SIGN_PFX_PASSWORD }}
     steps:
       - name: Descargar el repositorio
         uses: actions/checkout@v4
 
+      - name: Decidir si hay versión nueva
+        id: decide
+        shell: bash
+        # El tag NO se crea aquí: lo crea `gh release create` al final, cuando ya hay
+        # artefactos. Así un fallo de empaquetado, de verificación o de firma no deja un
+        # tag huérfano sin Release que bloquee el reintento. La guarda mira si el Release
+        # ya existe -no si el tag existe-: un tag suelto sin Release se reintenta.
+        run: |
+          version=$(sed -n 's/^imagewatch\.version=//p' gradle.properties | tr -d '[:space:]')
+          if [ -z "$version" ]; then
+            echo "Falta imagewatch.version en gradle.properties" >&2
+            exit 1
+          fi
+          if gh release view "v$version" >/dev/null 2>&1; then
+            echo "El Release v$version ya existe: nada que publicar."
+            echo "release=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "release=true" >> "$GITHUB_OUTPUT"
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
       - name: Configurar JDK
+        if: steps.decide.outputs.release == 'true'
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: "21"
 
       - name: Configurar Gradle
+        if: steps.decide.outputs.release == 'true'
         uses: gradle/actions/setup-gradle@v4
 
       - name: Instalar WiX Toolset
+        if: steps.decide.outputs.release == 'true'
         run: choco install wixtoolset -y
 
-      - name: Generar el instalador MSI
+      - name: Empaquetar MSI y portable
+        if: steps.decide.outputs.release == 'true'
         shell: bash
         run: |
           chmod +x gradlew
-          ./gradlew :desktopApp:packageMsi --no-daemon
-
-      - name: Ubicar el instalador generado
-        id: msi
-        shell: bash
-        run: |
-          archivo=$(find desktopApp/build/compose/binaries/main/msi -name '*.msi' -print -quit)
-          if [ -z "$archivo" ]; then
-            echo "No se encontró ningún .msi en desktopApp/build/compose/binaries/main/msi" >&2
-            exit 1
-          fi
-          echo "path=$archivo" >> "$GITHUB_OUTPUT"
+          ./gradlew :desktopApp:packageMsi :desktopApp:packageAppImage --no-daemon
 
       - name: Verificar el runtime empaquetado
+        if: steps.decide.outputs.release == 'true'
         shell: bash
-        # Bloquea el release a propósito, a diferencia de la versión anterior de este paso, que
-        # solo dejaba constancia en el log.
+        # Bloquea el release a propósito. El runtime que arma jlink es mínimo, y un módulo que
+        # falte no lo detecta ni un test ni `packageMsi`: la aplicación instalada muere en el
+        # arranque con «Failed to launch JVM» y el pipeline termina igual de verde. Ya ocurrió
+        # una vez con `java.naming`, que logback necesita por reflexión y que
+        # `suggestRuntimeModules` no sugiere porque jdeps no la ve.
         #
-        # El runtime que arma jlink es mínimo, y un módulo que falte no lo detecta ni un test ni
-        # `packageMsi`: la aplicación instalada muere en el arranque con «Failed to launch JVM» y
-        # el pipeline termina igual de verde. Ya ocurrió una vez con `java.naming`, que logback
-        # necesita por reflexión y que `suggestRuntimeModules` no sugiere porque jdeps no la ve.
-        #
-        # Esto comprueba la declaración, no el arranque: un smoke test de verdad exigiría ejecutar
-        # la aplicación, y es una aplicación de bandeja que no termina sola. Cubre la regresión
-        # concreta que nos mordió —que alguien quite un módulo de nativeDistributions— y no más.
+        # Comprueba la declaración, no el arranque: un smoke test de verdad exigiría ejecutar una
+        # aplicación de bandeja que no termina sola. Cubre la regresión concreta que nos mordió
+        # —que alguien quite un módulo de nativeDistributions— y no más.
         run: |
           archivo_release=$(find desktopApp/build/compose -type f -name release -path '*runtime*' -print -quit || true)
           if [ -z "$archivo_release" ]; then
@@ -112,11 +126,49 @@ jobs:
             esac
           done
 
-      - name: Publicar el Release con el instalador
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Localizar el MSI y comprimir el portable
+        id: art
+        if: steps.decide.outputs.release == 'true'
         shell: bash
         run: |
-          gh release create "${{ github.ref_name }}" "${{ steps.msi.outputs.path }}" \
-            --title "ImageWatch ${{ github.ref_name }}" \
+          msi=$(find desktopApp/build/compose/binaries/main/msi -name '*.msi' -print -quit)
+          if [ -z "$msi" ]; then
+            echo "No se encontró ningún .msi." >&2
+            exit 1
+          fi
+          appdir="desktopApp/build/compose/binaries/main/app/ImageWatch"
+          if [ ! -d "$appdir" ]; then
+            echo "No se encontró la carpeta app-image en $appdir." >&2
+            exit 1
+          fi
+          zip="ImageWatch-${{ steps.decide.outputs.version }}-portable.zip"
+          ( cd "$(dirname "$appdir")" && 7z a -tzip "$GITHUB_WORKSPACE/$zip" "ImageWatch" >/dev/null )
+          echo "msi=$msi" >> "$GITHUB_OUTPUT"
+          echo "zip=$zip" >> "$GITHUB_OUTPUT"
+
+      - name: Firmar el MSI (solo si hay certificado configurado)
+        if: ${{ steps.decide.outputs.release == 'true' && env.SIGN_PFX_BASE64 != '' }}
+        shell: pwsh
+        run: |
+          $pfx = Join-Path $env:RUNNER_TEMP 'sign.pfx'
+          [IO.File]::WriteAllBytes($pfx, [Convert]::FromBase64String($env:SIGN_PFX_BASE64))
+          $signtool = Get-ChildItem 'C:\Program Files (x86)\Windows Kits\10\bin\*\x64\signtool.exe' |
+            Sort-Object FullName -Descending | Select-Object -First 1
+          if (-not $signtool) { throw 'signtool.exe no encontrado en el Windows SDK.' }
+          & $signtool.FullName sign /fd SHA256 /td SHA256 `
+            /tr http://timestamp.sectigo.com `
+            /f $pfx /p $env:SIGN_PFX_PASSWORD `
+            '${{ steps.art.outputs.msi }}'
+
+      - name: Publicar el Release con los dos artefactos
+        if: steps.decide.outputs.release == 'true'
+        shell: bash
+        # `gh release create` crea el tag vX.Y.Z sobre este commit en el mismo paso. Solo se
+        # llega aquí con MSI y portable ya construidos, verificados y -si hay certificado-
+        # firmados: el tag y el Release nacen juntos o no nacen.
+        run: |
+          gh release create "v${{ steps.decide.outputs.version }}" \
+            "${{ steps.art.outputs.msi }}" "${{ steps.art.outputs.zip }}" \
+            --target "$GITHUB_SHA" \
+            --title "ImageWatch v${{ steps.decide.outputs.version }}" \
             --generate-notes
