@@ -3,9 +3,11 @@ package io.github.shizukajiku.imagewatch.ui.settings
 import io.github.shizukajiku.imagewatch.application.AutostartPort
 import io.github.shizukajiku.imagewatch.config.AppConfig
 import io.github.shizukajiku.imagewatch.config.ThemePreference
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 import kotlin.time.Duration.Companion.seconds
 
 data class SettingsUiState(
@@ -19,10 +21,14 @@ data class SettingsUiState(
     val soundVolume: Float,
     val mutedAll: Boolean,
     val autostart: Boolean,
+    val teamsEnabled: Boolean,
+    val teamsWebhookUrl: String,
+    val teamsTestState: TeamsTestState = TeamsTestState.Idle,
     /** Cada error vive en la línea de ayuda -de altura reservada- de su propio campo. */
     val urlError: String? = null,
     val intervalError: String? = null,
     val toastError: String? = null,
+    val teamsWebhookError: String? = null,
 )
 
 /** El intervalo mínimo lo garantiza también el controlador; el máximo, la sensatez. */
@@ -45,11 +51,18 @@ private const val TOAST_MAX = 30L
  * @param apply aplica la configuración sobre la aplicación viva y la persiste. Devuelve `null` si
  *   todo fue bien, o el mensaje a mostrar.
  * @param autostart puerto del arranque al iniciar sesión. No pasa por [apply]: es estado del SO.
+ * @param scope donde corre el envío del botón «Probar webhook». No comparte ciclo de vida con
+ *   nada más de esta pantalla: sobrevive a que el usuario navegue fuera de Ajustes mientras la
+ *   prueba sigue en vuelo, igual que `ImagesViewModel` con sus temporizadores.
+ * @param testTeamsWebhook manda un mensaje de prueba a la URL indicada. Llega como función y no
+ *   como el cliente entero para que este view model no dependa de Ktor ni de infraestructura.
  */
 class SettingsViewModel(
     current: AppConfig,
     private val apply: (AppConfig) -> String?,
     private val autostart: AutostartPort,
+    private val scope: CoroutineScope,
+    private val testTeamsWebhook: suspend (String) -> Result<Unit>,
 ) {
     private val stateFile = current.stateFile
     private val imageNames = current.imageNames
@@ -76,6 +89,8 @@ class SettingsViewModel(
         soundVolume = config.soundVolume.toFloat(),
         mutedAll = config.mutedAll,
         autostart = autostart.isEnabled(),
+        teamsEnabled = config.teamsEnabled,
+        teamsWebhookUrl = config.teamsWebhookUrl,
     )
 
     /**
@@ -104,6 +119,8 @@ class SettingsViewModel(
 
     fun onMutedAllChange(value: Boolean) = editAndApply { it.copy(mutedAll = value) }
 
+    fun onTeamsEnabledChange(value: Boolean) = editAndApply { it.copy(teamsEnabled = value) }
+
     fun onAutostartChange(value: Boolean) {
         autostart.setEnabled(value)
         mutableState.value = mutableState.value.copy(autostart = autostart.isEnabled())
@@ -117,6 +134,61 @@ class SettingsViewModel(
 
     fun onUrlCommit() {
         mutableState.value = mutableState.value.copy(urlError = apply(configFromForm()))
+    }
+
+    fun onTeamsWebhookUrlChange(value: String) {
+        mutableState.value = mutableState.value.copy(
+            teamsWebhookUrl = value,
+            teamsWebhookError = null,
+            // La URL cambió: el resultado de la última prueba ya no dice nada de esta.
+            teamsTestState = TeamsTestState.Idle,
+        )
+    }
+
+    /**
+     * Valida la forma de la URL aquí mismo -no hay ningún recurso vivo que reconstruir, a
+     * diferencia de `onUrlCommit`, cuyo `apply` sí levanta un `HttpImageSource`-, y solo persiste
+     * si pasa. Una URL en blanco es válida: es el estado de fábrica, con la integración
+     * desactivada.
+     */
+    fun onTeamsWebhookUrlCommit() {
+        val url = mutableState.value.teamsWebhookUrl.trim()
+        val error = if (url.isNotEmpty() && !url.startsWith("https://", ignoreCase = true)) {
+            "La URL del webhook debe empezar por https://"
+        } else {
+            null
+        }
+        mutableState.value = mutableState.value.copy(teamsWebhookError = error)
+        if (error == null) {
+            apply(configFromForm())
+        }
+    }
+
+    /**
+     * Manda un mensaje de prueba a la URL tal como está en el campo ahora mismo -no hace falta
+     * haber hecho commit-, para que el usuario vea si funciona antes de dejarla guardada.
+     */
+    fun onTestTeamsWebhook() {
+        // Un segundo clic mientras la prueba anterior sigue en vuelo no lanza un segundo envío:
+        // el botón de Ajustes no deshabilita su Surface mientras se envía.
+        if (mutableState.value.teamsTestState == TeamsTestState.Sending) return
+        val url = mutableState.value.teamsWebhookUrl.trim()
+        if (url.isEmpty() || !url.startsWith("https://", ignoreCase = true)) {
+            mutableState.value = mutableState.value.copy(
+                teamsTestState = TeamsTestState.Failed("La URL del webhook debe empezar por https://"),
+            )
+            return
+        }
+        mutableState.value = mutableState.value.copy(teamsTestState = TeamsTestState.Sending)
+        scope.launch {
+            val result = testTeamsWebhook(url)
+            mutableState.value = mutableState.value.copy(
+                teamsTestState = result.fold(
+                    onSuccess = { TeamsTestState.Success },
+                    onFailure = { TeamsTestState.Failed(it.message ?: "No se pudo enviar el mensaje de prueba") },
+                ),
+            )
+        }
     }
 
     fun onIntervalChange(value: String) {
@@ -189,6 +261,8 @@ class SettingsViewModel(
             soundsEnabled = form.soundsEnabled,
             soundVolume = form.soundVolume.toDouble(),
             mutedAll = form.mutedAll,
+            teamsEnabled = form.teamsEnabled,
+            teamsWebhookUrl = form.teamsWebhookUrl.trim(),
         )
     }
 }

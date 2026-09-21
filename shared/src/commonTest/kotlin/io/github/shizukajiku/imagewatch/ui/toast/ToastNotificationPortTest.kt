@@ -55,6 +55,8 @@ private fun config(toastsEnabled: Boolean, mutedAll: Boolean = false) = AppConfi
     true,
     0.5,
     mutedAll,
+    false,
+    "",
 )
 
 private class FakeSilencedImageStore(private val silenced: Set<String> = emptySet()) : SilencedImageStore {

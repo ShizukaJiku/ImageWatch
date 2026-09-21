@@ -190,6 +190,8 @@ Las variables de entorno, si están puestas, mandan en ambos casos.
 | `TOAST_SECONDS` | `8` | Cuánto tarda un aviso emergente en desaparecer por sí solo |
 | `SOUNDS_ENABLED` | `true` | Reproduce un sonido junto con los avisos |
 | `SOUND_VOLUME` | `0.5` | Volumen de esos sonidos, de `0.0` a `1.0` |
+| `TEAMS_ENABLED` | `false` | Manda también las versiones nuevas a un webhook de Teams |
+| `TEAMS_WEBHOOK_URL` | *(vacío)* | URL del webhook. Debe ser `https://` |
 
 Para verlo cambiar rápido:
 
@@ -199,6 +201,40 @@ IMAGE_NAMES=alpha,beta,gamma,delta-fail POLL_INTERVAL_SECONDS=10 ./gradlew run
 
 Cualquier nombre que contenga `fail` provoca un error en el origen simulado, lo que
 permite ver el estado de error y comprobar que no afecta a las demás imágenes.
+
+## Aviso a Teams
+
+Además del toast en pantalla, ImageWatch puede mandar un mensaje a un canal de Teams por cada
+imagen vigilada que tenga una versión pendiente. Solo cubre eso —no los fallos de consulta—: el
+toast de error ya avisa en pantalla, y duplicarlo en Teams sería ruido por cada ciclo mientras el
+origen sigue caído.
+
+La lógica es distinta a la del toast a propósito, y no comparten fichero de estado. El toast
+avisa cuando el usuario **da por vista** una imagen —hay un botón para eso, y `images.json` es lo
+que ese botón mueve—. Teams no tiene ningún botón de confirmación, así que no puede depender de
+esa lista: lleva la suya propia, `teams-seen.json`, con la última versión de la que ya avisó a
+Teams por cada imagen. En cada ciclo de sondeo compara la versión remota actual contra **esa**
+lista —nunca contra lo que el escritorio tiene reconocido—; si es más nueva, avisa y la apunta ahí.
+Dar por vista una imagen en la app no calla el aviso a Teams, ni al revés: son dos historiales
+independientes.
+
+La primera vez que Teams ve una imagen —la integración se acaba de activar, o la imagen se acaba
+de agregar— no avisa: solo apunta la versión actual como línea base, en silencio. Sin esto,
+activar el interruptor con varias imágenes ya pendientes desde antes mandaría una ráfaga de
+mensajes de una sola vez.
+
+El webhook es el de un flujo de **Workflows para Teams** (Power Automate), no el conector
+«Webhook entrante» clásico de los conectores O365 —Microsoft los está retirando—:
+
+1. En el canal de Teams, **Workflows** → plantilla **«Publicar en un canal cuando se reciba una
+   solicitud web»**.
+2. Al crearlo, el flujo da una URL de tipo
+   `https://prod-XX.REGION.logic.azure.com/workflows/.../triggers/manual/paths/invoke?...`.
+3. Pega esa URL en Ajustes → tarjeta **Teams**, activa el interruptor y pulsa **Probar webhook**
+   para confirmar que llega antes de dejarlo funcionando solo.
+
+La URL vive en `config.json` igual que el resto de Ajustes; también se puede sembrar con
+`TEAMS_ENABLED`/`TEAMS_WEBHOOK_URL` en el primer arranque (ver [Configuración](#configuración)).
 
 ## Cómo interpreta los estados
 
@@ -251,6 +287,7 @@ Todo en `~/.notifier/`:
 |---|---|
 | `images.json` | Versión reconocida de cada imagen |
 | `tracked-images.json` | Lista de imágenes vigiladas |
+| `teams-seen.json` | Última versión de la que ya se avisó a Teams, por imagen. Independiente de `images.json` |
 | `config.json` | Configuración editable desde la pantalla de ajustes |
 | `imagewatch.log` | Registro, con rotación diaria y tope de 20 MB |
 | `updates/` | Carpeta temporal de la autoactualización (MSI descargado + checksum). Se vacía al empezar cada descarga |
