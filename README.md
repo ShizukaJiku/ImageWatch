@@ -42,7 +42,8 @@ Al pulsar **«Actualizar ahora»**:
    versión nueva. Tu configuración y tu lista de imágenes (`~/.notifier/`) no se tocan.
 
 Si falla el chequeo o la descarga —sin red, GitHub caído, checksum que no cuadra— el
-motivo aparece en la sección de Ajustes y el botón permite reintentar sin más.
+motivo resumido aparece en la sección de Ajustes y el botón permite reintentar. El detalle
+técnico (DNS, TLS, proxy, timeout…) queda en `~/.notifier/imagewatch.log`.
 
 Si falla `msiexec` (código ≠ 0, o cancelas la barra de progreso), la app ya se ha
 cerrado: la instalación anterior queda **intacta** —Windows Installer revierte— pero no se
