@@ -55,6 +55,12 @@ intento de actualización).
 GitHub**, aunque tengas `IGNORE_SSL_ERRORS=true` (ese interruptor es solo para tu registry
 interno). El MSI se comprueba contra el checksum publicado en el mismo Release.
 
+Si estás en una red con proxy corporativo que reinspecciona TLS, el chequeo de actualizaciones
+puede fallar con `PKIX path building failed` porque el runtime empaquetado no confía en la CA de
+ese proxy. La solución **no** es `IGNORE_SSL_ERRORS` -no aplica al actualizador, y desactivar la
+validación ahí abriría la puerta a un MSI falso-: pon `EXTRA_TRUSTED_CA_FILE` apuntando al
+certificado de esa CA (PEM). Se suma a la confianza por defecto del JDK sin quitarle nada.
+
 ## Compilar desde el código
 
 Requiere **JDK 21**; Gradle viene con el wrapper.
@@ -185,6 +191,7 @@ Las variables de entorno, si están puestas, mandan en ambos casos.
 | `POLL_INTERVAL_SECONDS` | `300` | Cada cuánto se consulta el origen |
 | `NOTIFIER_STATE_FILE` | `~/.notifier/images.json` | Dónde se guardan las versiones reconocidas |
 | `IGNORE_SSL_ERRORS` | `true` | Desactiva la validación TLS |
+| `EXTRA_TRUSTED_CA_FILE` | *(vacío)* | Ruta a un certificado de CA (PEM) que se suma a las del JDK, sin desactivar la validación TLS — para redes con inspección TLS corporativa. No se persiste en `config.json`: se relee del entorno en cada arranque |
 | `THEME` | `SYSTEM` | Apariencia: `SYSTEM`, `LIGHT` o `DARK` |
 | `TOASTS_ENABLED` | `true` | Muestra avisos emergentes al detectar una versión nueva |
 | `TOAST_SECONDS` | `8` | Cuánto tarda un aviso emergente en desaparecer por sí solo |
