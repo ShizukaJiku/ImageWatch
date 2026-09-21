@@ -86,6 +86,10 @@ fun SettingsScreen(
     onSoundsChange: (Boolean) -> Unit,
     onVolumeChange: (Float) -> Unit,
     onMutedAllChange: (Boolean) -> Unit,
+    onTeamsEnabledChange: (Boolean) -> Unit,
+    onTeamsWebhookUrlChange: (String) -> Unit,
+    onTeamsWebhookUrlCommit: () -> Unit,
+    onTestTeamsWebhook: () -> Unit,
     onAutostartChange: (Boolean) -> Unit,
     onResetSettings: () -> Unit,
     onWipeLocalData: () -> Unit,
@@ -246,6 +250,26 @@ fun SettingsScreen(
                             modifier = Modifier.width(44.dp),
                         )
                     }
+                }
+                SettingsCard("Teams") {
+                    Toggle(
+                        "Enviar avisos a Teams",
+                        "Repite en cada ciclo mientras siga pendiente, hasta que la reconozcas",
+                        state.teamsEnabled,
+                        onTeamsEnabledChange,
+                    )
+                    FieldLabel("URL del webhook")
+                    UrlField(
+                        state.teamsWebhookUrl,
+                        onTeamsWebhookUrlChange,
+                        onTeamsWebhookUrlCommit,
+                        state.teamsWebhookError != null,
+                    )
+                    HelpLine(
+                        state.teamsWebhookError ?: "Se comprueba al salir del campo o con Enter.",
+                        state.teamsWebhookError != null,
+                    )
+                    TeamsTestRow(state.teamsTestState, onTestTeamsWebhook)
                 }
             }
         }
@@ -451,6 +475,41 @@ private fun UpdatesCard(state: UpdateUiState, onCheck: () -> Unit, onApply: () -
                 )
                 HelpLine(phase.message, isError = true)
             }
+        }
+    }
+}
+
+/**
+ * Botón «Probar webhook» y, debajo, el resultado del último envío -sin línea de ayuda de altura
+ * reservada, a diferencia de [HelpLine]: aquí no hay un campo que valide en cada tecla, así que no
+ * hace falta reservar el hueco de antemano.
+ */
+@Composable
+private fun TeamsTestRow(state: TeamsTestState, onTest: () -> Unit) {
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Space.md)) {
+        FootPill(
+            if (state == TeamsTestState.Sending) "Enviando…" else "Probar webhook",
+            MaterialTheme.colorScheme.surfaceVariant,
+            MaterialTheme.colorScheme.onSurfaceVariant,
+            onClick = onTest,
+            leadingIcon = AppSvg.CHECK,
+        )
+        when (state) {
+            TeamsTestState.Success -> Text(
+                "Mensaje enviado.",
+                fontSize = TypeScale.caption,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+
+            is TeamsTestState.Failed -> Text(
+                state.message,
+                fontSize = TypeScale.caption,
+                color = MaterialTheme.colorScheme.error,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+
+            TeamsTestState.Idle, TeamsTestState.Sending -> Unit
         }
     }
 }

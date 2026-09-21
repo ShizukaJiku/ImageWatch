@@ -41,6 +41,8 @@ internal class JsonConfigStoreTest {
                 soundsEnabled = false,
                 soundVolume = 0.25,
                 mutedAll = true,
+                teamsEnabled = true,
+                teamsWebhookUrl = "https://prod-01.westus.logic.azure.com/workflows/abc/triggers/manual/paths/invoke",
             )
         JsonConfigStore(file, seed(stateFile)).save(guardado)
 
@@ -53,7 +55,44 @@ internal class JsonConfigStoreTest {
         assertEquals(ThemePreference.DARK, releido.theme)
         assertEquals(0.25, releido.soundVolume)
         assertTrue(releido.mutedAll)
+        assertTrue(releido.teamsEnabled)
+        assertEquals(
+            "https://prod-01.westus.logic.azure.com/workflows/abc/triggers/manual/paths/invoke",
+            releido.teamsWebhookUrl,
+        )
     }
+
+    @Test
+    fun `un config json de una version anterior sin campos de teams carga con la integracion desactivada`() =
+        withTempDir { dir ->
+            val file = dir.resolve("config.json")
+            val stateFile = dir.resolve("images.json").toString()
+            // Formato de cable de antes de que existieran teamsEnabled/teamsWebhookUrl: kotlinx-serialization
+            // exige que todo campo nuevo declare un valor por defecto para que esto siga cargando.
+            JsonFiles.fileSystem.write(file) {
+                writeUtf8(
+                    """
+                    {
+                        "remoteUrl": "https://origen.ejemplo/api",
+                        "pollIntervalSeconds": 300,
+                        "imageNames": ["alpha"],
+                        "simulationMode": true,
+                        "ignoreSslErrors": true,
+                        "theme": "SYSTEM",
+                        "toastsEnabled": true,
+                        "toastSeconds": 8,
+                        "soundsEnabled": true,
+                        "soundVolume": 0.5
+                    }
+                    """.trimIndent(),
+                )
+            }
+
+            val loaded = JsonConfigStore(file, seed(stateFile)).load()
+
+            assertFalse(loaded.teamsEnabled)
+            assertEquals("", loaded.teamsWebhookUrl)
+        }
 
     @Test
     fun la_ruta_del_estado_no_se_persiste_y_llega_desde_la_semilla() = withTempDir { dir ->
@@ -80,6 +119,8 @@ internal class JsonConfigStoreTest {
             soundsEnabled = true,
             soundVolume = 0.5,
             mutedAll = false,
+            teamsEnabled = false,
+            teamsWebhookUrl = "",
         )
     }
 }

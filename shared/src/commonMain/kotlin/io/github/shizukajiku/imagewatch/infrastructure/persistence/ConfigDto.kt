@@ -29,4 +29,7 @@ internal data class ConfigDto(
      * para quien ya la tuviera instalada.
      */
     val mutedAll: Boolean = false,
+    /** Mismo motivo que [mutedAll]: se añadió después, así que necesita valor por defecto. */
+    val teamsEnabled: Boolean = false,
+    val teamsWebhookUrl: String = "",
 )

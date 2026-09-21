@@ -37,12 +37,15 @@ import io.github.shizukajiku.imagewatch.infrastructure.os.WindowsAutostart
 import io.github.shizukajiku.imagewatch.infrastructure.persistence.JsonConfigStore
 import io.github.shizukajiku.imagewatch.infrastructure.persistence.JsonImageStateStore
 import io.github.shizukajiku.imagewatch.infrastructure.persistence.JsonSilencedImageStore
+import io.github.shizukajiku.imagewatch.infrastructure.persistence.JsonTeamsNotifiedStore
 import io.github.shizukajiku.imagewatch.infrastructure.persistence.JsonTrackedImageStore
 import io.github.shizukajiku.imagewatch.infrastructure.remote.EmptyImageSource
 import io.github.shizukajiku.imagewatch.infrastructure.remote.HttpClientFactory
 import io.github.shizukajiku.imagewatch.infrastructure.remote.HttpImageSource
 import io.github.shizukajiku.imagewatch.infrastructure.remote.ReloadableImageSource
 import io.github.shizukajiku.imagewatch.infrastructure.remote.SimulatedImageSource
+import io.github.shizukajiku.imagewatch.infrastructure.remote.TeamsNotificationPort
+import io.github.shizukajiku.imagewatch.infrastructure.remote.TeamsWebhookClient
 import io.github.shizukajiku.imagewatch.infrastructure.update.DownloadResult
 import io.github.shizukajiku.imagewatch.infrastructure.update.InstallKind
 import io.github.shizukajiku.imagewatch.infrastructure.update.MsiUpdateInstaller
@@ -127,6 +130,8 @@ private fun configFromEnvironment(): AppConfig {
         soundsEnabled = get("SOUNDS_ENABLED", "true").toBoolean(),
         soundVolume = get("SOUND_VOLUME", "0.5").toDouble(),
         mutedAll = get("MUTED_ALL", "false").toBoolean(),
+        teamsEnabled = get("TEAMS_ENABLED", "false").toBoolean(),
+        teamsWebhookUrl = get("TEAMS_WEBHOOK_URL", ""),
     )
 }
 
@@ -186,6 +191,12 @@ private class Wiring {
     // imágenes -que puede tener la validación apagada por `ignoreSslErrors`-.
     private val updateHttpClient = UpdateHttpClient.create()
 
+    // Mismo motivo que `updateHttpClient`: el webhook es un endpoint público y de confianza -Power
+    // Automate-, no el registro interno del usuario, así que TLS se valida siempre, pase lo que
+    // pase con `ignoreSslErrors`.
+    private val teamsHttpClient = HttpClientFactory.create(ignoreSslErrors = false)
+    val teamsClient = TeamsWebhookClient(teamsHttpClient)
+
     /** `~/.notifier/updates` — misma raíz por usuario que `config.json`. */
     private val updatesDir: Path =
         (configFromEnvironment().stateFile.toPath().parent ?: ".".toPath()) / "updates"
@@ -232,6 +243,9 @@ private class Wiring {
             )
         silencedImages =
             JsonSilencedImageStore(stateFile.sibling("silenced-images.json"))
+        // Fichero aparte de `images.json` a propósito: Teams lleva su propia línea base, sin "dar
+        // por visto" -ver el comentario de cabecera de TeamsNotificationPort-.
+        val teamsSeenStore = JsonTeamsNotifiedStore(stateFile.sibling("teams-seen.json"))
         service =
             VersionPollingService(
                 source,
@@ -241,6 +255,13 @@ private class Wiring {
                 listOf(ToastNotificationPort(toasts, sounds, silencedImages) { config.value }),
                 trackedImages,
             )
+        // No es un NotificationPort -ver por qué en su propio comentario de cabecera-: se engancha
+        // como oyente del snapshot, no como notificador de transiciones. Reutiliza `toastScope`:
+        // igual que los toasts, el envío a Teams no comparte ciclo de vida con la ventana ni con el
+        // sondeo.
+        service.addListener(
+            TeamsNotificationPort(teamsClient, teamsSeenStore, silencedImages, toastScope) { config.value },
+        )
         controller = PollingController(service, loaded.pollInterval)
         sounds.preload()
         // El portable no se autoactualiza; no tiene sentido consultar GitHub cada arranque.
@@ -317,15 +338,17 @@ private class Wiring {
                 soundsEnabled = factory.soundsEnabled,
                 soundVolume = factory.soundVolume,
                 mutedAll = factory.mutedAll,
+                teamsEnabled = factory.teamsEnabled,
+                teamsWebhookUrl = factory.teamsWebhookUrl,
             ),
         )
     }
 
     /**
-     * Borra los cuatro ficheros JSON que la app guarda en este equipo y para el sondeo. No se
-     * recablea `Wiring` en caliente -`service` tiene oyentes y el view model lo referencia-: el
-     * llamador cierra la app, y volver a abrirla la siembra de cero desde el entorno, que es el
-     * mismo camino que el primer arranque.
+     * Borra los ficheros JSON que la app guarda en este equipo y para el sondeo. No se recablea
+     * `Wiring` en caliente -`service` tiene oyentes y el view model lo referencia-: el llamador
+     * cierra la app, y volver a abrirla la siembra de cero desde el entorno, que es el mismo
+     * camino que el primer arranque.
      */
     fun wipeLocalData(onDone: () -> Unit) {
         controller.stop()
@@ -335,6 +358,7 @@ private class Wiring {
             base.sibling("config.json"),
             base.sibling("tracked-images.json"),
             base.sibling("silenced-images.json"),
+            base.sibling("teams-seen.json"),
         ).forEach { runCatching { FileSystem.SYSTEM.delete(it, mustExist = false) } }
         onDone()
     }
@@ -375,6 +399,8 @@ private class Wiring {
     }
 
     fun closeUpdates() = updateHttpClient.close()
+
+    fun closeTeamsClient() = teamsHttpClient.close()
 
     private fun sourceFor(config: AppConfig): ImageSource = when {
         config.simulationMode -> SimulatedImageSource(Clock.System, SIMULATED_BUMP_EVERY)
@@ -434,6 +460,7 @@ fun main(args: Array<String>) {
             wiring.controller.close()
             wiring.sounds.close()
             wiring.closeUpdates()
+            wiring.closeTeamsClient()
             wiring.toastScope.cancel()
             wiring.imagesScope.cancel()
             exitApplication()
@@ -627,7 +654,15 @@ private fun SettingsPane(
     // Sin clave: el unico que cambia la configuracion vigente es este mismo formulario -aplica al
     // momento-. SettingsPane ya se desmonta y se vuelve a montar al cambiar de pantalla con el
     // Crossfade, asi que al reabrir Ajustes el formulario nace con la configuracion vigente.
-    val viewModel = remember { SettingsViewModel(config, wiring::applyConfig, wiring.autostart) }
+    val viewModel = remember {
+        SettingsViewModel(
+            config,
+            wiring::applyConfig,
+            wiring.autostart,
+            wiring.imagesScope,
+            wiring.teamsClient::sendTest,
+        )
+    }
     val state by viewModel.state.collectAsState()
 
     val updatePhase by wiring.updateService.phase.collectAsState()
@@ -655,6 +690,10 @@ private fun SettingsPane(
         onSoundsChange = viewModel::onSoundsChange,
         onVolumeChange = viewModel::onVolumeChange,
         onMutedAllChange = viewModel::onMutedAllChange,
+        onTeamsEnabledChange = viewModel::onTeamsEnabledChange,
+        onTeamsWebhookUrlChange = viewModel::onTeamsWebhookUrlChange,
+        onTeamsWebhookUrlCommit = viewModel::onTeamsWebhookUrlCommit,
+        onTestTeamsWebhook = viewModel::onTestTeamsWebhook,
         onAutostartChange = viewModel::onAutostartChange,
         onResetSettings = {
             wiring.resetSettings()

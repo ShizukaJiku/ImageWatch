@@ -27,4 +27,6 @@ data class AppConfig(
     val soundsEnabled: Boolean,
     val soundVolume: Double,
     val mutedAll: Boolean,
+    val teamsEnabled: Boolean,
+    val teamsWebhookUrl: String,
 )

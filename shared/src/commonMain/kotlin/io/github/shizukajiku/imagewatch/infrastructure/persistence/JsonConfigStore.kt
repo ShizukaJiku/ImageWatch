@@ -35,6 +35,8 @@ class JsonConfigStore(private val file: Path, private val seed: AppConfig) : Con
         soundsEnabled = dto.soundsEnabled,
         soundVolume = dto.soundVolume,
         mutedAll = dto.mutedAll,
+        teamsEnabled = dto.teamsEnabled,
+        teamsWebhookUrl = dto.teamsWebhookUrl,
     )
 
     private fun toDto(config: AppConfig) = ConfigDto(
@@ -49,6 +51,8 @@ class JsonConfigStore(private val file: Path, private val seed: AppConfig) : Con
         soundsEnabled = config.soundsEnabled,
         soundVolume = config.soundVolume,
         mutedAll = config.mutedAll,
+        teamsEnabled = config.teamsEnabled,
+        teamsWebhookUrl = config.teamsWebhookUrl,
     )
 
     private companion object {

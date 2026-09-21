@@ -3,6 +3,11 @@ package io.github.shizukajiku.imagewatch.ui.settings
 import io.github.shizukajiku.imagewatch.application.AutostartPort
 import io.github.shizukajiku.imagewatch.config.AppConfig
 import io.github.shizukajiku.imagewatch.config.ThemePreference
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.test.runCurrent
+import kotlinx.coroutines.test.runTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
@@ -21,6 +26,8 @@ private fun config() = AppConfig(
     true,
     0.5,
     false,
+    false,
+    "",
 )
 
 private class FakeAutostart(private var on: Boolean = false) : AutostartPort {
@@ -33,10 +40,15 @@ private class FakeAutostart(private var on: Boolean = false) : AutostartPort {
     }
 }
 
+@OptIn(ExperimentalCoroutinesApi::class)
 class SettingsViewModelTest {
 
-    private fun viewModel(onApply: (AppConfig) -> String? = { null }, autostart: AutostartPort = FakeAutostart()) =
-        SettingsViewModel(config(), onApply, autostart)
+    private fun viewModel(
+        onApply: (AppConfig) -> String? = { null },
+        autostart: AutostartPort = FakeAutostart(),
+        scope: CoroutineScope = CoroutineScope(Job()),
+        testTeamsWebhook: suspend (String) -> Result<Unit> = { Result.success(Unit) },
+    ) = SettingsViewModel(config(), onApply, autostart, scope, testTeamsWebhook)
 
     @Test
     fun `arranca con los valores vigentes y el estado del autostart`() {
@@ -212,5 +224,116 @@ class SettingsViewModelTest {
 
         assertEquals(true, autostart.enabled)
         assertEquals(true, vm.state.value.autostart)
+    }
+
+    @Test
+    fun `una URL de webhook https se aplica en el commit`() {
+        var recibida: AppConfig? = null
+        val vm = viewModel(onApply = {
+            recibida = it
+            null
+        })
+
+        vm.onTeamsWebhookUrlChange("https://prod-01.westus.logic.azure.com/workflows/abc")
+        assertNull(recibida, "Teclear no aplica todavía")
+
+        vm.onTeamsWebhookUrlCommit()
+        assertEquals("https://prod-01.westus.logic.azure.com/workflows/abc", recibida?.teamsWebhookUrl)
+        assertNull(vm.state.value.teamsWebhookError)
+    }
+
+    @Test
+    fun `una URL de webhook sin https no se aplica y pinta su linea de ayuda`() {
+        val vm = viewModel(onApply = { error("no debería llamarse") })
+
+        vm.onTeamsWebhookUrlChange("http://inseguro.ejemplo/workflow")
+        vm.onTeamsWebhookUrlCommit()
+
+        assertEquals("La URL del webhook debe empezar por https://", vm.state.value.teamsWebhookError)
+    }
+
+    @Test
+    fun `una URL de webhook en blanco se acepta como estado de fabrica`() {
+        var recibida: AppConfig? = null
+        val vm = viewModel(onApply = {
+            recibida = it
+            null
+        })
+
+        vm.onTeamsWebhookUrlChange("")
+        vm.onTeamsWebhookUrlCommit()
+
+        assertNull(vm.state.value.teamsWebhookError)
+        assertEquals("", recibida?.teamsWebhookUrl)
+    }
+
+    @Test
+    fun `activar el envio a Teams se aplica al instante`() {
+        var recibida: AppConfig? = null
+        val vm = viewModel(onApply = {
+            recibida = it
+            null
+        })
+
+        vm.onTeamsEnabledChange(true)
+
+        assertEquals(true, recibida?.teamsEnabled)
+    }
+
+    @Test
+    fun `probar webhook con una URL invalida no llama al puerto de prueba`() = runTest {
+        var llamado = false
+        val vm = viewModel(scope = backgroundScope, testTeamsWebhook = {
+            llamado = true
+            Result.success(Unit)
+        })
+
+        vm.onTeamsWebhookUrlChange("http://inseguro.ejemplo")
+        vm.onTestTeamsWebhook()
+        runCurrent()
+
+        assertEquals(false, llamado)
+        assertEquals(
+            TeamsTestState.Failed("La URL del webhook debe empezar por https://"),
+            vm.state.value.teamsTestState,
+        )
+    }
+
+    @Test
+    fun `probar webhook con exito publica el estado de exito`() = runTest {
+        val vm = viewModel(scope = backgroundScope, testTeamsWebhook = { Result.success(Unit) })
+
+        vm.onTeamsWebhookUrlChange("https://prod-01.westus.logic.azure.com/workflows/abc")
+        vm.onTestTeamsWebhook()
+        runCurrent()
+
+        assertEquals(TeamsTestState.Success, vm.state.value.teamsTestState)
+    }
+
+    @Test
+    fun `probar webhook con fallo publica el mensaje del error`() = runTest {
+        val vm = viewModel(
+            scope = backgroundScope,
+            testTeamsWebhook = { Result.failure(RuntimeException("HTTP 404")) },
+        )
+
+        vm.onTeamsWebhookUrlChange("https://prod-01.westus.logic.azure.com/workflows/abc")
+        vm.onTestTeamsWebhook()
+        runCurrent()
+
+        assertEquals(TeamsTestState.Failed("HTTP 404"), vm.state.value.teamsTestState)
+    }
+
+    @Test
+    fun `cambiar la URL tras una prueba limpia su resultado`() = runTest {
+        val vm = viewModel(scope = backgroundScope, testTeamsWebhook = { Result.success(Unit) })
+        vm.onTeamsWebhookUrlChange("https://prod-01.westus.logic.azure.com/workflows/abc")
+        vm.onTestTeamsWebhook()
+        runCurrent()
+        assertEquals(TeamsTestState.Success, vm.state.value.teamsTestState)
+
+        vm.onTeamsWebhookUrlChange("https://prod-01.westus.logic.azure.com/workflows/otro")
+
+        assertEquals(TeamsTestState.Idle, vm.state.value.teamsTestState)
     }
 }
