@@ -59,11 +59,12 @@ class TeamsNotificationPort(
                 lastNotified == null -> baseline[image.name] = remote.value
 
                 remote > lastNotified -> {
-                    // "de" es lo último que Teams avisó, no `image.local` -el campo del escritorio,
-                    // que no se mueve si el usuario nunca da «Marcar como visto»-. Sin esto, dos
-                    // avisos seguidos sin reconocer en el escritorio repetirían el mismo "desde"
-                    // aunque Teams ya hubiera avisado de una versión intermedia.
-                    toNotify.add(TeamsVersionUpdate(image.name, lastNotified.value, remote.value))
+                    // El mensaje solo lleva la version nueva, pero la comparacion sigue siendo
+                    // contra lo ultimo que Teams avisó -no contra `image.local`, el campo del
+                    // escritorio, que no se mueve si el usuario nunca da «Marcar como visto»-. Sin
+                    // esto, dos avisos seguidos sin reconocer en el escritorio repetirían un aviso
+                    // ya mandado, o se saltarian una version intermedia.
+                    toNotify.add(TeamsVersionUpdate(image.name, remote.value))
                     notified[image.name] = remote.value
                 }
 

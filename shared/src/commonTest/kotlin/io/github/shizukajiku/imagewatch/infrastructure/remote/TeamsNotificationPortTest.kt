@@ -260,9 +260,11 @@ internal class TeamsNotificationPortTest {
 
         port.onSnapshot(snapshotOf(pending("alpha", remote = "1.2.0")))
 
-        // El "desde" es lo último que avisó Teams -1.1.0-, no el `local` del escritorio -1.0.0 en
-        // el ImageState de `pending()`-. Confundir los dos es justo el bug reportado.
-        assertTrue("1.1.0 → 1.2.0" in bodyOf(recorder.await()))
+        // El mensaje solo lleva la version nueva -1.2.0-. La comparacion interna que decide si
+        // avisar sigue siendo contra lo último que avisó Teams -1.1.0-, no contra el `local` del
+        // escritorio -1.0.0 en el ImageState de `pending()`-; confundir los dos es justo el bug
+        // reportado, y lo cubre la línea base guardada abajo.
+        assertTrue("1.2.0" in bodyOf(recorder.await()))
         awaitAllLaunched(backgroundScope)
         assertEquals("1.2.0", store.find("alpha"))
     }
@@ -286,12 +288,13 @@ internal class TeamsNotificationPortTest {
     @Test
     fun `un segundo aviso parte de lo que avisó el primero, no de la linea base original`() = runTest {
         // Reproduce el caso reportado: línea base 1.0.15, primer aviso hasta 1.0.16, segundo aviso
-        // hasta 1.0.17. El segundo mensaje debe decir "1.0.16 → 1.0.17", no "1.0.15 → 1.0.17".
+        // hasta 1.0.17. El segundo mensaje debe avisar solo de 1.0.17 -y la línea base guardada debe
+        // reflejarlo-, sin quedarse pegado a la 1.0.15 original.
         val store = FakeTeamsNotifiedStore(mapOf("alpha" to "1.0.15"))
         val primero = RecordingEngine()
         val port = port(primero.engine, backgroundScope, store = store) { config(teamsEnabled = true) }
         port.onSnapshot(snapshotOf(pending("alpha", remote = "1.0.16")))
-        assertTrue("1.0.15 → 1.0.16" in bodyOf(primero.await()))
+        assertTrue("1.0.16" in bodyOf(primero.await()))
         awaitAllLaunched(backgroundScope)
         assertEquals("1.0.16", store.find("alpha"))
 
@@ -299,7 +302,7 @@ internal class TeamsNotificationPortTest {
         val port2 = port(segundo.engine, backgroundScope, store = store) { config(teamsEnabled = true) }
         port2.onSnapshot(snapshotOf(pending("alpha", remote = "1.0.17")))
 
-        assertTrue("1.0.16 → 1.0.17" in bodyOf(segundo.await()))
+        assertTrue("1.0.17" in bodyOf(segundo.await()))
         awaitAllLaunched(backgroundScope)
         assertEquals("1.0.17", store.find("alpha"))
     }
@@ -333,9 +336,9 @@ internal class TeamsNotificationPortTest {
 
         port.onSnapshot(snapshotOf(acknowledgedByDesktop("alpha", "2.0.0")))
 
-        // El "desde" en el mensaje es 1.0.0 -lo que ya sabía Teams-, no 2.0.0 -el `local` del
-        // escritorio, que aquí coincide con la remota justo porque ya la reconoció-.
-        assertTrue("1.0.0 → 2.0.0" in bodyOf(recorder.await()))
+        // Se avisa de la 2.0.0 aunque el `local` del escritorio ya coincida con la remota -porque
+        // ya la reconoció-: la decisión de avisar no mira ese campo, solo la línea base de Teams.
+        assertTrue("2.0.0" in bodyOf(recorder.await()))
         awaitAllLaunched(backgroundScope)
         assertEquals("2.0.0", store.find("alpha"))
     }

@@ -12,14 +12,12 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 
 /**
- * Una imagen a incluir en el mensaje, con las dos versiones que le importan a Teams: [from] es la
- * última de la que Teams ya avisó -no la que el escritorio tiene reconocida-, y [to] la que motiva
- * este aviso. Un `ImageState` no sirve para esto: su `local` es el campo del escritorio, que se
- * queda quieto si el usuario nunca pulsa «Marcar como visto», y usarlo aquí haría que el mensaje
- * siguiera anunciando el mismo «desde» ciclo tras ciclo aunque Teams ya hubiera avisado de versiones
- * intermedias.
+ * Una imagen a incluir en el mensaje, con la versión remota que motiva este aviso. El mensaje solo
+ * anuncia esta versión -no de dónde venía-: la línea base propia de Teams en [TeamsNotificationPort]
+ * sigue comparando contra lo último que avisó para decidir si toca avisar, pero eso ya no se refleja
+ * en la tarjeta.
  */
-data class TeamsVersionUpdate(val name: String, val from: String, val to: String)
+data class TeamsVersionUpdate(val name: String, val version: String)
 
 /**
  * Envía mensajes al flujo de Power Automate que crea la plantilla «Publicar en un canal cuando se
@@ -51,7 +49,7 @@ class TeamsWebhookClient(private val client: HttpClient) {
     private fun updatesCard(updates: List<TeamsVersionUpdate>): JsonObject {
         val word = if (updates.size == 1) "imagen" else "imágenes"
         val title = "Hay ${updates.size} $word con versión nueva"
-        val rows = updates.map { update -> versionRow(update.name, update.from, update.to) }
+        val rows = updates.map { update -> versionRow(update.name, update.version) }
         return card(header(title), rows)
     }
 
@@ -61,15 +59,22 @@ class TeamsWebhookClient(private val client: HttpClient) {
     private fun header(title: String): JsonObject = textBlock(title, weight = "Bolder", size = "Medium", wrap = true)
 
     /**
-     * Una fila por imagen: el nombre a la izquierda, el «desde → hasta» a la derecha en
+     * Una fila por imagen: el nombre a la izquierda, la versión nueva a la derecha en
      * monoespaciada para que las versiones se lean alineadas igual que en una tabla. `separator`
      * traza la línea fina entre filas, incluida la primera, que la separa del encabezado.
      */
-    private fun versionRow(name: String, from: String, to: String): JsonObject = columnSet(
+    private fun versionRow(name: String, version: String): JsonObject = columnSet(
         column("stretch", textBlock(name, weight = "Bolder", wrap = true, spacing = "None")),
         column(
             "auto",
-            textBlock("$from → $to", fontType = "Monospace", color = "Accent", wrap = false, spacing = "None"),
+            textBlock(
+                version,
+                weight = "Bolder",
+                fontType = "Monospace",
+                color = "Accent",
+                wrap = false,
+                spacing = "None",
+            ),
         ),
         separator = true,
     )

@@ -97,6 +97,14 @@ private val LOG = LoggerFactory.getLogger("io.github.shizukajiku.imagewatch.Wiri
 private fun Path.sibling(name: String): Path = (parent ?: ".".toPath()).resolve(name)
 
 /**
+ * Ruta a una CA adicional (PEM) para redes con inspección TLS -típicamente un proxy corporativo-.
+ * Fuera de `AppConfig` a propósito: es confianza TLS a nivel de máquina, no una preferencia de la
+ * aplicación, así que no pasa por Ajustes ni se persiste en `config.json`, igual que
+ * `jpackage.app-path` o `USERPROFILE` más abajo.
+ */
+private fun extraTrustedCaFile(): String? = System.getenv("EXTRA_TRUSTED_CA_FILE")?.trim()?.takeIf { it.isNotBlank() }
+
+/**
  * Los valores con los que se siembra el fichero de configuración la primera vez. A partir de ahí
  * manda el fichero: si el entorno prevaleciera siempre, la pantalla de ajustes no podría modificar
  * nada.
@@ -189,12 +197,15 @@ private class Wiring {
 
     // Cliente propio del actualizador: TLS estricto siempre, sin compartir con el del registro de
     // imágenes -que puede tener la validación apagada por `ignoreSslErrors`-.
-    private val updateHttpClient = UpdateHttpClient.create()
+    private val updateHttpClient = UpdateHttpClient.create(extraTrustedCaFile())
 
     // Mismo motivo que `updateHttpClient`: el webhook es un endpoint público y de confianza -Power
     // Automate-, no el registro interno del usuario, así que TLS se valida siempre, pase lo que
     // pase con `ignoreSslErrors`.
-    private val teamsHttpClient = HttpClientFactory.create(ignoreSslErrors = false)
+    private val teamsHttpClient = HttpClientFactory.create(
+        ignoreSslErrors = false,
+        extraTrustedCaFile = extraTrustedCaFile(),
+    )
     val teamsClient = TeamsWebhookClient(teamsHttpClient)
 
     /** `~/.notifier/updates` — misma raíz por usuario que `config.json`. */
@@ -409,7 +420,7 @@ private class Wiring {
         config.remoteUrl.isBlank() -> EmptyImageSource
 
         else -> HttpImageSource(
-            HttpClientFactory.create(config.ignoreSslErrors),
+            HttpClientFactory.create(config.ignoreSslErrors, extraTrustedCaFile()),
             config.remoteUrl,
         )
     }
