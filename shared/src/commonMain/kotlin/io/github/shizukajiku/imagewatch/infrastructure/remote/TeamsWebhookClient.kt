@@ -67,7 +67,14 @@ class TeamsWebhookClient(private val client: HttpClient) {
         column("stretch", textBlock(name, weight = "Bolder", wrap = true, spacing = "None")),
         column(
             "auto",
-            textBlock(version, fontType = "Monospace", color = "Accent", wrap = false, spacing = "None"),
+            textBlock(
+                version,
+                weight = "Bolder",
+                fontType = "Monospace",
+                color = "Accent",
+                wrap = false,
+                spacing = "None",
+            ),
         ),
         separator = true,
     )
