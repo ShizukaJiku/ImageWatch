@@ -24,13 +24,13 @@ internal class TeamsWebhookClientTest {
             respond("", HttpStatusCode.OK, headersOf("Content-Type", "application/json"))
         }
 
-        val result = client(engine).sendUpdates(WEBHOOK_URL, listOf(TeamsVersionUpdate("alpha", "1.0.0", "1.1.0")))
+        val result = client(engine).sendUpdates(WEBHOOK_URL, listOf(TeamsVersionUpdate("alpha", "1.1.0")))
 
         assertTrue(result.isSuccess)
         assertEquals(WEBHOOK_URL, recibida?.url.toString())
         val body = bodyOf(recibida!!)
         assertTrue("alpha" in body, "La tarjeta debe nombrar la imagen")
-        assertTrue("1.0.0" in body && "1.1.0" in body, "La tarjeta debe llevar ambas versiones")
+        assertTrue("1.1.0" in body, "La tarjeta debe llevar la version nueva")
         assertTrue("AdaptiveCard" in body, "El sobre debe ser una Adaptive Card")
     }
 
